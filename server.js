@@ -79,8 +79,8 @@ app.use(session({
   resave:            false,
   saveUninitialized: false,
   cookie: {
-    secure:   true,
-    sameSite: 'none',
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge:   24 * 60 * 60 * 1000
   }
 }));
@@ -474,9 +474,22 @@ app.post('/api/order', async (req, res) => {
       topic:                `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}`,
     });
 
-    const itemLines = items.map(item =>
-      `> 🔹 **${item.name}** — ${item.quantity}x — **${formatPrice(item.price * item.quantity)}**`
-    ).join('\n');
+    const coreOption = req.body.coreOption || false;
+    console.log('📦 Commande reçue - coreOption:', coreOption);
+    console.log('📦 Premier item options:', JSON.stringify(items[0]?.options));
+
+    const itemLines = items.map(item => {
+      const opts  = item.options || {};
+      const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
+      const total = (item.price + extra) * item.quantity;
+      const optStr = [
+        opts.debadgage ? '🔧 Debadgage (+10€)' : '',
+        opts.retexture ? '🎨 Retexture (+5€)'  : ''
+      ].filter(Boolean).join(', ');
+      return `> 🔹 **${item.name}** — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`;
+    }).join('\n');
+
+    const coreLines = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
 
     const staffMentions  = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
     const clientMention  = member ? `<@${member.id}>` : `**${username}**`;
@@ -488,7 +501,7 @@ app.post('/api/order', async (req, res) => {
       `**Total :** **${formatPrice(totalPrice)}**`,
       ``,
       `## 📦 Articles commandés`,
-      itemLines,
+      itemLines + coreLines,
       ``,
       `## 👷 Staff notifié`,
       staffMentions,

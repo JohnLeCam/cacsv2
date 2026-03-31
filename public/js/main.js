@@ -830,12 +830,15 @@ async function confirmOrder() {
   }, 0) + coreChecked;
 
   try {
+    const coreOption = document.getElementById('cartCoreOption')?.checked || false;
+
     const res = await fetch('/api/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items:       cart,
         totalPrice:  total,
+        coreOption,
         discordUser: userData?.connected ? { id: userData.id, username: userData.username } : null
       })
     });
