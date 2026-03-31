@@ -362,12 +362,9 @@ function buildModCard(mod, index) {
             <span class="mod-price ${totalDiscount > 0 ? 'discounted' : ''}">${priceFormatted}</span>
             ${discountHTML}
           </div>
-          <a href="${discordUrl}" target="_blank" class="btn-buy">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057.1 18.082.112 18.105.131 18.12a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-            </svg>
-            Acheter
-          </a>
+          <button class="btn-add-cart" id="cart-btn-${mod.id}" onclick="addToCart('${mod.id}')">
+            🛒 Ajouter
+          </button>
         </div>
       </div>
     </div>
@@ -582,4 +579,256 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PANIER
+// ═══════════════════════════════════════════════════════════
+
+let cart = JSON.parse(localStorage.getItem('cacsCart') || '[]');
+
+function saveCart() {
+  localStorage.setItem('cacsCart', JSON.stringify(cart));
+  updateCartUI();
+}
+
+function updateCartUI() {
+  const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const countEl = document.getElementById('cartCount');
+  if (countEl) countEl.textContent = count;
+
+  // Mettre à jour les boutons "Ajouter"
+  cart.forEach(item => {
+    const btn = document.getElementById(`cart-btn-${item.id}`);
+    if (btn) btn.classList.add('added');
+  });
+
+  renderCartItems();
+}
+
+function addToCart(modId) {
+  const mod = _allMods.find(m => m.id === modId);
+  if (!mod) return;
+
+  // Calculer le prix final avec réductions
+  let price = mod.basePrice;
+  const roleDiscount  = userData?.connected ? (userData.discount || 0) : 0;
+  let promoDiscount   = 0;
+  if (siteData?.promotions) {
+    for (const p of siteData.promotions) {
+      if (!p.applyToCategories?.length || p.applyToCategories.includes(mod.category)) {
+        if (p.discountPercent > promoDiscount) promoDiscount = p.discountPercent;
+      }
+    }
+  }
+  const totalDiscount = Math.min(roleDiscount + promoDiscount, 100);
+  const finalPrice    = price * (1 - totalDiscount / 100);
+
+  const existing = cart.find(i => i.id === modId);
+  if (existing) {
+    existing.quantity++;
+  } else {
+    cart.push({
+      id:            mod.id,
+      name:          mod.name,
+      price:         finalPrice,
+      originalPrice: totalDiscount > 0 ? price : null,
+      image:         (mod.images?.[0] || mod.image || ''),
+      quantity:      1
+    });
+  }
+
+  saveCart();
+
+  // Animation du bouton
+  const btn = document.getElementById(`cart-btn-${modId}`);
+  if (btn) {
+    btn.textContent = '✅ Ajouté !';
+    btn.classList.add('added');
+    setTimeout(() => { btn.textContent = '🛒 Ajouter'; }, 1500);
+  }
+
+  // Ouvrir le panier
+  openCart();
+}
+
+function removeFromCart(modId) {
+  cart = cart.filter(i => i.id !== modId);
+  saveCart();
+}
+
+function changeQty(modId, delta) {
+  const item = cart.find(i => i.id === modId);
+  if (!item) return;
+  item.quantity += delta;
+  if (item.quantity <= 0) removeFromCart(modId);
+  else saveCart();
+}
+
+function renderCartItems() {
+  const container = document.getElementById('cartItems');
+  const footer    = document.getElementById('cartFooter');
+  const totalEl   = document.getElementById('cartTotal');
+  if (!container) return;
+
+  if (cart.length === 0) {
+    container.innerHTML = '<div class="cart-empty">Ton panier est vide</div>';
+    if (footer) footer.style.display = 'none';
+    return;
+  }
+
+  if (footer) footer.style.display = 'block';
+
+  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  if (totalEl) totalEl.textContent = formatPrice(total);
+
+  container.innerHTML = cart.map(item => `
+    <div class="cart-item">
+      ${item.image
+        ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">`
+        : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`}
+      <div class="cart-item-info">
+        <div class="cart-item-name">${escapeHtml(item.name)}</div>
+        <div class="cart-item-price">${formatPrice(item.price)} / unité</div>
+      </div>
+      <div class="cart-item-qty">
+        <button onclick="changeQty('${item.id}', -1)">−</button>
+        <span>${item.quantity}</span>
+        <button onclick="changeQty('${item.id}', +1)">+</button>
+      </div>
+      <button class="cart-item-remove" onclick="removeFromCart('${item.id}')">🗑️</button>
+    </div>
+  `).join('');
+}
+
+function toggleCart() {
+  const drawer  = document.getElementById('cartDrawer');
+  const overlay = document.getElementById('cartOverlay');
+  const isOpen  = drawer.classList.contains('open');
+  drawer.classList.toggle('open', !isOpen);
+  overlay.classList.toggle('open', !isOpen);
+  document.body.style.overflow = isOpen ? '' : 'hidden';
+}
+
+function openCart() {
+  const drawer  = document.getElementById('cartDrawer');
+  const overlay = document.getElementById('cartOverlay');
+  drawer.classList.add('open');
+  overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MODALE COMMANDE
+// ═══════════════════════════════════════════════════════════
+
+function openOrderModal() {
+  const overlay = document.getElementById('orderModalOverlay');
+  const body    = document.getElementById('orderModalBody');
+  if (!overlay || !body) return;
+
+  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  const itemLines = cart.map(item => `
+    <div class="order-recap-item">
+      <span>${escapeHtml(item.name)} × ${item.quantity}</span>
+      <span>${formatPrice(item.price * item.quantity)}</span>
+    </div>
+  `).join('');
+
+  const loginWarning = !userData?.connected
+    ? `<div class="order-info-box">
+        ⚠️ <strong>Tu n'es pas connecté via Discord.</strong><br>
+        Le ticket sera créé mais tu ne seras pas ajouté automatiquement.<br>
+        <button onclick="loginDiscord()" style="margin-top:8px;background:var(--blue);border:none;color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Se connecter avec Discord</button>
+      </div>`
+    : `<div class="order-info-box">
+        ✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>
+        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.
+      </div>`;
+
+  body.innerHTML = `
+    <div class="order-recap">
+      ${itemLines}
+      <div class="order-recap-total">
+        <span>Total</span>
+        <span>${formatPrice(total)}</span>
+      </div>
+    </div>
+    ${loginWarning}
+    <div class="order-modal-actions">
+      <button class="btn-ghost" onclick="closeOrderModal()">Annuler</button>
+      <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">
+        🎫 Créer le ticket Discord
+      </button>
+    </div>
+  `;
+
+  // Fermer le panier, ouvrir la modale
+  const drawer = document.getElementById('cartDrawer');
+  const cartOverlay = document.getElementById('cartOverlay');
+  drawer.classList.remove('open');
+  cartOverlay.classList.remove('open');
+  document.body.style.overflow = 'hidden';
+
+  overlay.classList.add('open');
+}
+
+function closeOrderModal() {
+  const overlay = document.getElementById('orderModalOverlay');
+  if (overlay) overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+async function confirmOrder() {
+  const btn = document.getElementById('btnConfirmOrder');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Création en cours...'; }
+
+  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  try {
+    const res = await fetch('/api/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items:       cart,
+        totalPrice:  total,
+        discordUser: userData?.connected ? { id: userData.id, username: userData.username } : null
+      })
+    });
+
+    const result = await res.json();
+
+    if (result.success) {
+      // Vider le panier
+      cart = [];
+      saveCart();
+
+      // Afficher le succès
+      const body = document.getElementById('orderModalBody');
+      if (body) {
+        body.innerHTML = `
+          <div class="order-success">
+            <div class="success-icon">🎫</div>
+            <h4>Ticket créé avec succès !</h4>
+            <p>Un ticket a été ouvert sur notre Discord.<br>
+               Notre équipe va te contacter très rapidement.</p>
+            <div class="ticket-link">#${escapeHtml(result.ticketChannel)}</div>
+          </div>
+          <div style="margin-top:18px">
+            <button onclick="closeOrderModal()" style="width:100%;background:var(--blue);border:none;color:#fff;padding:11px;border-radius:4px;font-weight:700;font-size:0.9rem;cursor:pointer;letter-spacing:0.06em">
+              Fermer
+            </button>
+          </div>
+        `;
+      }
+    } else {
+      alert('Erreur : ' + (result.error || 'Impossible de créer le ticket.'));
+      if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
+    }
+  } catch (err) {
+    console.error('Erreur commande:', err);
+    alert('Erreur de connexion au serveur.');
+    if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
+  }
 }

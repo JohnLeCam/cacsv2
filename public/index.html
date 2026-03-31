@@ -31,6 +31,9 @@
         <a href="#discord-section" class="nav-link">Discord</a>
       </div>
 
+      <button class="cart-nav-btn" id="cartNavBtn" onclick="toggleCart()" title="Mon panier">
+        🛒 <span class="cart-count" id="cartCount">0</span>
+      </button>
       <div class="nav-auth" id="navAuth">
         <button class="btn-discord-nav" onclick="loginDiscord()">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
@@ -173,6 +176,40 @@
   <div class="mod-detail-overlay" id="modDetailOverlay" onclick="if(event.target===this)closeModDetail()">
     <div class="mod-detail-modal" id="modDetailModal">
       <!-- Rempli dynamiquement par JS -->
+    </div>
+  </div>
+
+  <!-- PANIER -->
+  <div class="cart-drawer" id="cartDrawer">
+    <div class="cart-header">
+      <h3>🛒 Mon panier</h3>
+      <button onclick="toggleCart()" class="cart-close">✕</button>
+    </div>
+    <div class="cart-items" id="cartItems">
+      <div class="cart-empty">Ton panier est vide</div>
+    </div>
+    <div class="cart-footer" id="cartFooter" style="display:none">
+      <div class="cart-total">
+        <span>Total</span>
+        <span id="cartTotal">0,00 €</span>
+      </div>
+      <button class="btn-cart-order" onclick="openOrderModal()">
+        Valider la commande →
+      </button>
+    </div>
+  </div>
+  <div class="cart-overlay" id="cartOverlay" onclick="toggleCart()"></div>
+
+  <!-- MODALE COMMANDE -->
+  <div class="order-modal-overlay" id="orderModalOverlay" onclick="if(event.target===this)closeOrderModal()">
+    <div class="order-modal">
+      <div class="order-modal-header">
+        <h3>📦 Valider ma commande</h3>
+        <button onclick="closeOrderModal()">✕</button>
+      </div>
+      <div class="order-modal-body" id="orderModalBody">
+        <!-- Rempli par JS -->
+      </div>
     </div>
   </div>
 
