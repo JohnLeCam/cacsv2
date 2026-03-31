@@ -183,7 +183,7 @@ app.get('/auth/discord', (req, res) => {
     client_id:     config.CLIENT_ID,
     redirect_uri:  config.REDIRECT_URI,
     response_type: 'code',
-    scope:         'identify guilds.members.read'
+    scope:         'identify guilds.members.read guilds.join'
   });
   res.redirect(`https://discord.com/api/oauth2/authorize?${params}`);
 });
@@ -212,6 +212,26 @@ app.get('/auth/discord/callback', async (req, res) => {
     const userData = await userRes.json();
 
     let memberRoles = [];
+
+    // Ajouter automatiquement l'utilisateur au serveur Discord
+    try {
+      await fetch(
+        `https://discord.com/api/guilds/${config.GUILD_ID}/members/${userData.id}`,
+        {
+          method:  'PUT',
+          headers: {
+            Authorization: `Bot ${config.BOT_TOKEN || process.env.BOT_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ access_token: tokenData.access_token })
+        }
+      );
+      console.log(`✅ ${userData.username} ajouté/déjà dans le serveur Discord`);
+    } catch (e) {
+      console.warn('Impossible d'ajouter au serveur Discord:', e.message);
+    }
+
+    // Récupérer les rôles du membre
     try {
       const memberRes  = await fetch(
         `https://discord.com/api/users/@me/guilds/${config.GUILD_ID}/member`,
