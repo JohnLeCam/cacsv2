@@ -44,7 +44,7 @@ function applySiteConfig() {
   const s = siteData.site;
 
   // Titre de la page
-  document.title = `${s.title} — C&M Modding`;
+  document.title = s.title || "Cac's GTA V Mods";
 
   // Hero
   const badge = document.getElementById('heroBadge');
