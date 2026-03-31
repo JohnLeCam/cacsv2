@@ -229,10 +229,7 @@ app.get('/auth/discord/callback', async (req, res) => {
     };
 
     const isAdmin = config.ADMIN_ROLE_IDS.some(id => memberRoles.includes(id));
-    if (isAdmin) {
-      req.session.isAdmin = true;
-      return res.redirect('/admin');
-    }
+    if (isAdmin) req.session.isAdmin = true;
     res.redirect('/');
   } catch (err) {
     console.error('Erreur OAuth Discord:', err);
