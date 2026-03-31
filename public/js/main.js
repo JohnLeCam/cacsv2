@@ -648,8 +648,7 @@ function addToCart(modId) {
       quantity:      1,
       options: {
         debadgage:   false,
-        retexture:   false,
-        core:        false
+        retexture:   false
       }
     });
   }
@@ -695,16 +694,17 @@ function renderCartItems() {
 
   if (footer) footer.style.display = 'block';
 
+  const coreOption = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
   const total = cart.reduce((sum, i) => {
     const opts  = i.options || {};
-    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     return sum + (i.price + extra) * i.quantity;
-  }, 0);
+  }, 0) + coreOption;
   if (totalEl) totalEl.textContent = formatPrice(total);
 
   container.innerHTML = cart.map(item => {
     const opts     = item.options || {};
-    const extraPrice = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    const extraPrice = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     const totalItem  = (item.price + extraPrice) * item.quantity;
     return `
     <div class="cart-item" id="cart-item-${item.id}">
@@ -727,10 +727,7 @@ function renderCartItems() {
           <input type="checkbox" ${opts.retexture ? 'checked' : ''} onchange="toggleOption('${item.id}', 'retexture')">
           <span>🎨 Retexture <em>+5€</em></span>
         </label>
-        <label class="cart-option">
-          <input type="checkbox" ${opts.core ? 'checked' : ''} onchange="toggleOption('${item.id}', 'core')">
-          <span>📦 Ressource [CORE] <em>+10€</em></span>
-        </label>
+
       </div>
     </div>
   `}).join('');
@@ -762,11 +759,12 @@ function openOrderModal() {
   const body    = document.getElementById('orderModalBody');
   if (!overlay || !body) return;
 
+  const coreChecked = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
   const total = cart.reduce((sum, i) => {
     const opts  = i.options || {};
-    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     return sum + (i.price + extra) * i.quantity;
-  }, 0);
+  }, 0) + coreChecked;
 
   const itemLines = cart.map(item => `
     <div class="order-recap-item">
@@ -789,6 +787,7 @@ function openOrderModal() {
   body.innerHTML = `
     <div class="order-recap">
       ${itemLines}
+      ${coreChecked ? `<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(10)}</span></div>` : ''}
       <div class="order-recap-total">
         <span>Total</span>
         <span>${formatPrice(total)}</span>
@@ -823,11 +822,12 @@ async function confirmOrder() {
   const btn = document.getElementById('btnConfirmOrder');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Création en cours...'; }
 
+  const coreChecked = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
   const total = cart.reduce((sum, i) => {
     const opts  = i.options || {};
-    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     return sum + (i.price + extra) * i.quantity;
-  }, 0);
+  }, 0) + coreChecked;
 
   try {
     const res = await fetch('/api/order', {
