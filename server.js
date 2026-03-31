@@ -246,6 +246,21 @@ app.post('/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// ── PROTECTION /admin ────────────────────────────────────────
+app.get('/admin', (req, res, next) => {
+  const user = req.session.user;
+  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  if (isAdmin) return next(); // laisser Express servir le fichier statique
+  res.status(404).send('404 - Page non trouvée');
+});
+
+app.get('/admin/', (req, res, next) => {
+  const user = req.session.user;
+  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  if (isAdmin) return next();
+  res.status(404).send('404 - Page non trouvée');
+});
+
 // ── API PUBLIQUE ──────────────────────────────────────────────
 
 app.get('/api/public', async (req, res) => {
