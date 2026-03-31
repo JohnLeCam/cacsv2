@@ -592,6 +592,14 @@ function saveCart() {
   updateCartUI();
 }
 
+function toggleOption(modId, option) {
+  const item = cart.find(i => i.id === modId);
+  if (!item) return;
+  if (!item.options) item.options = { debadgage: false, retexture: false, core: false };
+  item.options[option] = !item.options[option];
+  saveCart();
+}
+
 function updateCartUI() {
   const count = cart.reduce((sum, item) => sum + item.quantity, 0);
   const countEl = document.getElementById('cartCount');
@@ -626,7 +634,10 @@ function addToCart(modId) {
 
   const existing = cart.find(i => i.id === modId);
   if (existing) {
-    existing.quantity++;
+    // Quantité limitée à 1 par mod
+    showToast('Ce mod est déjà dans ton panier !');
+    openCart();
+    return;
   } else {
     cart.push({
       id:            mod.id,
@@ -634,7 +645,12 @@ function addToCart(modId) {
       price:         finalPrice,
       originalPrice: totalDiscount > 0 ? price : null,
       image:         (mod.images?.[0] || mod.image || ''),
-      quantity:      1
+      quantity:      1,
+      options: {
+        debadgage:   false,
+        retexture:   false,
+        core:        false
+      }
     });
   }
 
@@ -679,26 +695,45 @@ function renderCartItems() {
 
   if (footer) footer.style.display = 'block';
 
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = cart.reduce((sum, i) => {
+    const opts  = i.options || {};
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    return sum + (i.price + extra) * i.quantity;
+  }, 0);
   if (totalEl) totalEl.textContent = formatPrice(total);
 
-  container.innerHTML = cart.map(item => `
-    <div class="cart-item">
-      ${item.image
-        ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">`
-        : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`}
-      <div class="cart-item-info">
-        <div class="cart-item-name">${escapeHtml(item.name)}</div>
-        <div class="cart-item-price">${formatPrice(item.price)} / unité</div>
+  container.innerHTML = cart.map(item => {
+    const opts     = item.options || {};
+    const extraPrice = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    const totalItem  = (item.price + extraPrice) * item.quantity;
+    return `
+    <div class="cart-item" id="cart-item-${item.id}">
+      <div class="cart-item-top">
+        ${item.image
+          ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">`
+          : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`}
+        <div class="cart-item-info">
+          <div class="cart-item-name">${escapeHtml(item.name)}</div>
+          <div class="cart-item-price">${formatPrice(totalItem)}</div>
+        </div>
+        <button class="cart-item-remove" onclick="removeFromCart('${item.id}')">🗑️</button>
       </div>
-      <div class="cart-item-qty">
-        <button onclick="changeQty('${item.id}', -1)">−</button>
-        <span>${item.quantity}</span>
-        <button onclick="changeQty('${item.id}', +1)">+</button>
+      <div class="cart-item-options">
+        <label class="cart-option">
+          <input type="checkbox" ${opts.debadgage ? 'checked' : ''} onchange="toggleOption('${item.id}', 'debadgage')">
+          <span>🔧 Debadgage <em>+10€</em></span>
+        </label>
+        <label class="cart-option">
+          <input type="checkbox" ${opts.retexture ? 'checked' : ''} onchange="toggleOption('${item.id}', 'retexture')">
+          <span>🎨 Retexture <em>+5€</em></span>
+        </label>
+        <label class="cart-option">
+          <input type="checkbox" ${opts.core ? 'checked' : ''} onchange="toggleOption('${item.id}', 'core')">
+          <span>📦 Ressource [CORE] <em>+10€</em></span>
+        </label>
       </div>
-      <button class="cart-item-remove" onclick="removeFromCart('${item.id}')">🗑️</button>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function toggleCart() {
@@ -727,7 +762,11 @@ function openOrderModal() {
   const body    = document.getElementById('orderModalBody');
   if (!overlay || !body) return;
 
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = cart.reduce((sum, i) => {
+    const opts  = i.options || {};
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    return sum + (i.price + extra) * i.quantity;
+  }, 0);
 
   const itemLines = cart.map(item => `
     <div class="order-recap-item">
@@ -784,7 +823,11 @@ async function confirmOrder() {
   const btn = document.getElementById('btnConfirmOrder');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Création en cours...'; }
 
-  const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const total = cart.reduce((sum, i) => {
+    const opts  = i.options || {};
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0) + (opts.core ? 10 : 0);
+    return sum + (i.price + extra) * i.quantity;
+  }, 0);
 
   try {
     const res = await fetch('/api/order', {
@@ -831,4 +874,19 @@ async function confirmOrder() {
     alert('Erreur de connexion au serveur.');
     if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
   }
+}
+
+// ─── Toast notification ───────────────────────────────────────
+function showToast(msg) {
+  let toast = document.getElementById('siteToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'siteToast';
+    toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;border:1px solid rgba(0,87,184,0.4);color:#fff;padding:10px 20px;border-radius:6px;font-size:0.85rem;z-index:9999;transition:opacity 0.3s;font-family:var(--font-ui)';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 2500);
 }
