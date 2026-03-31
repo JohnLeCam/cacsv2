@@ -228,7 +228,7 @@ app.get('/auth/discord/callback', async (req, res) => {
       );
       console.log(`✅ ${userData.username} ajouté/déjà dans le serveur Discord`);
     } catch (e) {
-      console.warn('Impossible d'ajouter au serveur Discord:', e.message);
+      console.warn('Impossible dajouter au serveur Discord:', e.message);
     }
 
     // Récupérer les rôles du membre
