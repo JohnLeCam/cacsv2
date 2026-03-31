@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cac's GTA V Mods — C&M Modding</title>
+  <meta name="description" content="Mods FiveM de qualité — Véhicules, Scripts, Livrées, EUP par C&M Modding">
+
+  <!-- Fonts Google -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════ NAVBAR ═══ -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+
+      <a href="#" class="nav-logo">
+        <img src="/logo.png" alt="Logo" style="width:38px;height:38px;border-radius:50%;border:1.5px solid rgba(0,87,184,0.4);box-shadow:0 0 10px rgba(0,87,184,0.2);object-fit:cover;flex-shrink:0">
+        <span style="display:flex;flex-direction:column;line-height:1">
+          <span style="font-family:'Bebas Neue',sans-serif;font-size:1.25rem;letter-spacing:0.1em"><span class="logo-red">CAC'S</span> GTA V MODS</span>
+        </span>
+      </a>
+
+      <div class="nav-links">
+        <a href="#catalogue" class="nav-link">Catalogue</a>
+        <a href="#discord-section" class="nav-link">Discord</a>
+      </div>
+
+      <div class="nav-auth" id="navAuth">
+        <button class="btn-discord-nav" onclick="loginDiscord()">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057.1 18.082.112 18.105.131 18.12a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+          </svg>
+          Connexion Discord
+        </button>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- ═════════════════════════════════════════ HERO ═══ -->
+  <section class="hero" id="home">
+    <div class="hero-bg">
+      <div class="scanlines"></div>
+      <div class="grid-overlay"></div>
+      <div class="vignette"></div>
+    </div>
+
+    <div class="hero-content">
+      <img src="/logo.png" alt="Logo" style="width:80px;height:80px;border-radius:50%;margin:0 auto 20px;display:block;border:2px solid rgba(0,87,184,0.35);box-shadow:0 0 24px rgba(0,87,184,0.2),0 0 48px rgba(200,16,46,0.1);object-fit:cover;animation:heroFadeIn 0.9s ease 0.05s both">
+      <div class="hero-badge" id="heroBadge">CAC'S GTA V MODS</div>
+      <h1 class="hero-title" data-text="CAC'S GTA V MODS">CAC'S GTA V MODS</h1>
+      <div style="width:80px;height:3px;margin:0 auto 20px;background:linear-gradient(90deg,#0057b8,#fff,#c8102e);border-radius:2px;animation:heroFadeIn 0.9s ease 0.25s both"></div>
+      <p class="hero-subtitle" id="heroSubtitle">Mods FiveM de qualité • Véhicules • Scripts • Livrées • EUP</p>
+      <div class="hero-actions">
+        <a href="#catalogue" class="btn-primary">
+          <span>VOIR LE CATALOGUE</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#discord-section" class="btn-outline" id="heroDiscordBtn">REJOINDRE LE DISCORD</a>
+      </div>
+    </div>
+
+    <div class="hero-scroll-indicator">
+      <span>SCROLL</span>
+      <div class="scroll-bar"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════ ANNOUNCEMENT ═══ -->
+  <div class="announcement" id="announcement" style="display:none">
+    <span class="announce-icon">📢</span>
+    <span id="announceText"></span>
+    <button onclick="this.parentElement.style.display='none'">✕</button>
+  </div>
+
+  <!-- ══════════════════════════════ BANDEAU PROMOS ═══ -->
+  <div class="promo-banner" id="promoBanner" style="display:none">
+    <div class="promo-banner-track" id="promoBannerTrack">
+      <!-- Rempli par JS -->
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════ CATALOGUE ═══ -->
+  <section class="section catalogue-section" id="catalogue">
+    <div class="container">
+      <div class="section-header">
+        <div class="section-tag">NOS MODS</div>
+        <h2 class="section-title">CATALOGUE COMPLET</h2>
+        <p class="section-desc">Tous nos mods FiveM. Connecte-toi avec Discord pour voir tes prix personnalisés.</p>
+      </div>
+
+      <!-- Barre de filtre catégories -->
+      <div class="category-filters" id="categoryFilters">
+        <button class="filter-btn active" data-cat="all">Tout voir</button>
+        <!-- Catégories ajoutées par JS -->
+      </div>
+
+      <!-- Grille des mods -->
+      <div class="mods-grid" id="modsGrid">
+        <!-- Cartes ajoutées par JS -->
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════ DISCORD ═══ -->
+  <section class="section discord-cta-section" id="discord-section">
+    <div class="container">
+      <div class="discord-card">
+        <div class="discord-card-bg"></div>
+        <div class="discord-card-content">
+          <div class="discord-logo-big">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057.1 18.082.112 18.105.131 18.12a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+            </svg>
+          </div>
+          <h2>LES ACHATS SE FONT SUR DISCORD</h2>
+          <p>Rejoins notre serveur pour accéder aux ventes, obtenir du support et profiter des avantages réservés aux membres.</p>
+          <a href="#" class="btn-discord-big" id="discordCta">REJOINDRE LE SERVEUR</a>
+          <div class="discord-perks">
+            <div class="perk-item">
+              <span>🎖️</span>
+              <span>Rôles VIP avec réductions exclusives</span>
+            </div>
+            <div class="perk-item">
+              <span>🛠️</span>
+              <span>Support technique inclus</span>
+            </div>
+            <div class="perk-item">
+              <span>🚀</span>
+              <span>Mises à jour gratuites à vie</span>
+            </div>
+            <div class="perk-item">
+              <span>🔔</span>
+              <span>Alertes nouvelles sorties</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════ FOOTER ═══ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-brand">
+          <div class="footer-logo" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <img src="/logo.png" alt="Logo" style="width:32px;height:32px;border-radius:50%;border:1px solid rgba(0,87,184,0.3);object-fit:cover">
+            <span><span class="logo-red">CAC'S</span> GTA V MODS</span>
+          </div>
+          <p>Mods FiveM de qualité</p>
+        </div>
+        <div class="footer-nav">
+          <a href="#catalogue">Catalogue</a>
+          <a href="#discord-section">Discord</a>
+          </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2024 C&M Modding — Tous droits réservés</span>
+        <span class="footer-note">Site vitrine uniquement · Vente via Discord</span>
+      </div>
+    </div>
+  </footer>
+
+
+  <!-- ═══════════════════════════════ MODAL DÉTAIL MOD ═══ -->
+  <div class="mod-detail-overlay" id="modDetailOverlay" onclick="if(event.target===this)closeModDetail()">
+    <div class="mod-detail-modal" id="modDetailModal">
+      <!-- Rempli dynamiquement par JS -->
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
