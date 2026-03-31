@@ -71,13 +71,17 @@ discordBot.login(BOT_TOKEN).catch(err => {
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+// Railway utilise un proxy HTTPS — nécessaire pour les sessions
+app.set('trust proxy', 1);
+
 app.use(session({
   secret:            config.SESSION_SECRET || 'fallback-secret',
   resave:            false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000
+    secure:   true,
+    sameSite: 'none',
+    maxAge:   24 * 60 * 60 * 1000
   }
 }));
 
