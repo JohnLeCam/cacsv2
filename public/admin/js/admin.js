@@ -662,8 +662,27 @@ async function toggleMaintenance() {
   document.getElementById('toggleMaintenance').classList.toggle('on');
   const isOn = isToggleOn('toggleMaintenance');
   updateMaintenanceStatus(isOn);
-  data.site = { ...data.site, maintenance_mode: isOn ? 'true' : 'false' };
-  await saveAll();
+
+  try {
+    setSaveStatus('saving', 'Sauvegarde...');
+    const res = await fetch('/api/admin/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site: { maintenance_mode: isOn ? 'true' : 'false' }
+      })
+    });
+    if (res.ok) {
+      if (data.site) data.site.maintenance_mode = isOn ? 'true' : 'false';
+      setSaveStatus('saved', '✓ Sauvegardé');
+      setTimeout(() => setSaveStatus('', ''), 2000);
+    } else {
+      setSaveStatus('error', '✗ Erreur');
+    }
+  } catch (e) {
+    setSaveStatus('error', '✗ Erreur serveur');
+    console.error(e);
+  }
 }
 
 function updateMaintenanceStatus(isOn) {
