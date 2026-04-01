@@ -635,6 +635,7 @@ function triggerVisibleAnimations() {
 }
 
 function formatPrice(amount) {
+  if (!amount || amount <= 0) return 'Gratuit';
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency', currency: 'EUR', minimumFractionDigits: 2
   }).format(amount);
