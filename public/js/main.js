@@ -1,21 +1,13 @@
-// ============================================================
-//  MAIN.JS — Cac's GTA V Mods
-//  Gère : chargement catalogue, promos, compte à rebours, auth Discord
-// ============================================================
-
-// Données chargées depuis le serveur
-let siteData   = null;  // données publiques (mods, promos, config)
-let userData   = null;  // données utilisateur connecté (discount, rôle)
+let siteData   = null;
+let userData   = null;
 let activeFilter = 'all';
 
-// ─── Initialisation ──────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavbarScroll();
   setupScrollAnimations();
   await loadAll();
 });
 
-// Charger toutes les données en parallèle
 async function loadAll() {
   try {
     const [pub, user] = await Promise.all([
@@ -26,7 +18,6 @@ async function loadAll() {
     siteData = pub;
     userData = user;
 
-    // Appliquer les données
     applySiteConfig();
     renderNavAuth();
     renderPromos();
@@ -47,6 +38,28 @@ async function checkMaintenanceBanner() {
       showMaintenanceBanner();
     }
   } catch (e) {}
+
+  setInterval(async () => {
+    try {
+      const res  = await fetch('/api/maintenance-status');
+      const data = await res.json();
+
+      if (data.maintenance && !data.isStaff) {
+        window.location.href = '/maintenance';
+      }
+
+      if (data.maintenance && data.isStaff && !document.getElementById('maintBannerBottom')) {
+        showMaintenanceBanner();
+      }
+
+      if (!data.maintenance && document.getElementById('maintBannerBottom')) {
+        document.getElementById('maintBannerTop')?.remove();
+        document.getElementById('maintBannerBottom')?.remove();
+        document.body.style.paddingTop    = '';
+        document.body.style.paddingBottom = '';
+      }
+    } catch (e) {}
+  }, 5000);
 }
 
 function showMaintenanceBanner() {
@@ -104,44 +117,37 @@ function showMaintenanceBanner() {
     return banner;
   }
 
-  // Bandeau haut
   const top = createBanner('maintBannerTop');
   top.style.position = 'fixed';
-  top.style.top = '64px'; // hauteur de la navbar
+  top.style.top = '64px';
   document.body.appendChild(top);
 
-  // Bandeau bas
   const bottom = createBanner('maintBannerBottom');
   bottom.style.position = 'fixed';
   bottom.style.bottom = '0';
   document.body.appendChild(bottom);
 
-  document.body.style.paddingTop    = '109px'; // nav (64) + bandeau (45)
+  document.body.style.paddingTop    = '109px';
   document.body.style.paddingBottom = '45px';
 }
 
-// ─── Config du site ──────────────────────────────────────────
 function applySiteConfig() {
   if (!siteData?.site) return;
   const s = siteData.site;
 
-  // Titre de la page
   document.title = s.title || "Cac's GTA V Mods";
 
-  // Hero
   const badge = document.getElementById('heroBadge');
   if (badge && s.heroTagline) badge.textContent = s.heroTagline;
 
   const subtitle = document.getElementById('heroSubtitle');
   if (subtitle && s.subtitle) subtitle.textContent = s.subtitle;
 
-  // Bouton Discord
   const links = document.querySelectorAll('[id="discordCta"], #heroDiscordBtn');
   links.forEach(el => {
     if (s.discordUrl) el.href = s.discordUrl;
   });
 
-  // Annonce
   if (s.announcement && s.announcement.trim() !== '') {
     const banner = document.getElementById('announcement');
     const text   = document.getElementById('announceText');
@@ -152,13 +158,11 @@ function applySiteConfig() {
   }
 }
 
-// ─── Navbar Auth ─────────────────────────────────────────────
 function renderNavAuth() {
   const navAuth = document.getElementById('navAuth');
   if (!navAuth) return;
 
   if (userData?.connected) {
-    // Utilisateur connecté → afficher profil + badge rôle
     const roleHTML = userData.roleName
       ? `<span class="user-role-tag" style="${userData.roleColor ? `color:${userData.roleColor};border-color:${userData.roleColor}60` : ''}">
            ${userData.roleName} -${userData.discount}%
@@ -174,7 +178,6 @@ function renderNavAuth() {
       </div>
     `;
   } else {
-    // Non connecté → bouton connexion Discord
     navAuth.innerHTML = `
       <button class="btn-discord-nav" onclick="loginDiscord()">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
@@ -186,7 +189,6 @@ function renderNavAuth() {
   }
 }
 
-// ─── Promotions ───────────────────────────────────────────────
 function renderPromos() {
   const banner = document.getElementById('promoBanner');
   const track  = document.getElementById('promoBannerTrack');
@@ -214,26 +216,19 @@ function renderPromos() {
     }).join('');
   }
 
-  // Répéter suffisamment pour remplir n'importe quelle largeur d'écran
   const items = buildItems();
-
-  // Calculer combien d'exemplaires on a besoin pour remplir l'écran
-  // On met d'abord une copie pour mesurer, puis on duplique suffisamment
   track.innerHTML = items;
 
-  // Attendre que le DOM soit rendu pour mesurer
   requestAnimationFrame(() => {
-    const trackW   = track.scrollWidth;
-    const bannerW  = banner.offsetWidth;
+    const trackW  = track.scrollWidth;
+    const bannerW = banner.offsetWidth;
 
     if (trackW < bannerW) {
-      // Contenu plus court que l'écran : on répète assez de fois pour couvrir
       const copies = Math.ceil((bannerW * 3) / trackW) + 1;
       let repeated = '';
       for (let i = 0; i < copies; i++) repeated += items;
       track.innerHTML = repeated;
     } else {
-      // Contenu assez large : doubler pour le défilement infini sans saut
       track.innerHTML = items + items;
     }
   });
@@ -260,26 +255,21 @@ function startBannerCountdown(promoId, endDateStr) {
   setInterval(update, 1000);
 }
 
-// (startCountdown remplacé par startBannerCountdown)
-
-// ─── Filtres Catégories ──────────────────────────────────────
 function renderCategoryFilters() {
   const container = document.getElementById('categoryFilters');
   if (!container || !siteData?.categories) return;
 
   siteData.categories.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    // Compatibilité : cat peut être un objet {id, name, color, icon} ou une simple chaîne
-    const catId   = cat.id   || cat;
-    const catName = cat.name || cat;
-    const catIcon = cat.icon || '';
+    const btn      = document.createElement('button');
+    btn.className  = 'filter-btn';
+    const catId    = cat.id   || cat;
+    const catName  = cat.name || cat;
+    const catIcon  = cat.icon || '';
     const catColor = cat.color || null;
 
     btn.dataset.cat = catId;
-    btn.innerHTML = `${catIcon} ${catName}`;
+    btn.innerHTML   = `${catIcon} ${catName}`;
 
-    // Coloriser le bouton actif avec la couleur de la catégorie
     if (catColor) {
       btn.dataset.color = catColor;
       btn.addEventListener('mouseenter', () => {
@@ -307,16 +297,13 @@ function setFilter(cat, color) {
   document.querySelectorAll('.filter-btn').forEach(btn => {
     const isActive = btn.dataset.cat === cat || (cat === 'all' && btn.dataset.cat === 'all');
     btn.classList.toggle('active', isActive);
-
-    // Remettre les styles hover à zéro
     btn.style.borderColor = '';
     btn.style.color = '';
 
-    // Appliquer la couleur sur le bouton actif
     if (isActive && btn.dataset.color) {
       btn.style.borderColor = btn.dataset.color;
-      btn.style.color = btn.dataset.color;
-      btn.style.boxShadow = `0 0 12px ${btn.dataset.color}40`;
+      btn.style.color       = btn.dataset.color;
+      btn.style.boxShadow   = `0 0 12px ${btn.dataset.color}40`;
     } else if (isActive) {
       btn.style.boxShadow = '';
     }
@@ -325,12 +312,10 @@ function setFilter(cat, color) {
   renderMods();
 }
 
-// ─── Grille des mods ─────────────────────────────────────────
 function renderMods() {
   const grid = document.getElementById('modsGrid');
   if (!grid || !siteData?.mods) return;
 
-  // Filtrer par catégorie
   let mods = siteData.mods;
   if (activeFilter !== 'all') {
     mods = mods.filter(m => m.category === activeFilter);
@@ -348,22 +333,16 @@ function renderMods() {
 
   _allMods = mods;
   grid.innerHTML = mods.map((mod, i) => buildModCard(mod, i)).join('');
-
   setTimeout(triggerVisibleAnimations, 50);
 }
 
-// Construire le HTML d'une carte mod
 function buildModCard(mod, index) {
-  // Calculer le prix avec réduction
-  let price        = mod.basePrice;
+  let price         = mod.basePrice;
   let originalPrice = null;
   let discountLabel = '';
 
-  // Réduction de rôle Discord
   const roleDiscount = userData?.connected ? (userData.discount || 0) : 0;
-
-  // Réduction de promo active sur cette catégorie
-  let promoDiscount = 0;
+  let promoDiscount  = 0;
   if (siteData?.promotions) {
     for (const p of siteData.promotions) {
       if (!p.applyToCategories?.length || p.applyToCategories.includes(mod.category)) {
@@ -372,25 +351,20 @@ function buildModCard(mod, index) {
     }
   }
 
-  // Prendre la meilleure réduction (on cumule ou on prend la plus grande selon la logique choisie)
   const totalDiscount = Math.min(roleDiscount + promoDiscount, 100);
-
   if (totalDiscount > 0) {
     originalPrice = formatPrice(price);
-    price = price * (1 - totalDiscount / 100);
+    price         = price * (1 - totalDiscount / 100);
     discountLabel = `-${totalDiscount}%`;
   }
 
   const priceFormatted = formatPrice(price);
-
-  // Trouver les infos de la catégorie (nom, couleur, icône)
-  const catInfo = siteData?.categories?.find(c => (c.id || c) === mod.category);
+  const catInfo  = siteData?.categories?.find(c => (c.id || c) === mod.category);
   const catName  = catInfo?.name  || mod.category;
   const catColor = catInfo?.color || null;
   const catIcon  = catInfo?.icon  || getCategoryIcon(mod.category);
-
   const catStyle = catColor ? `style="color:${catColor};border-color:${catColor}40;background:${catColor}12"` : '';
-  // Carousel d'images
+
   const allImages = Array.isArray(mod.images) && mod.images.length > 0
     ? mod.images
     : (mod.image ? [mod.image] : []);
@@ -417,15 +391,9 @@ function buildModCard(mod, index) {
       </div>`;
   }
 
-  const featuredBadge = mod.featured ? `<div class="mod-featured-badge">⭐ En vedette</div>` : '';
+  const featuredBadge     = mod.featured ? `<div class="mod-featured-badge">⭐ En vedette</div>` : '';
   const priceOriginalHTML = originalPrice ? `<span class="mod-price-original">${originalPrice}</span>` : '';
-  const discountHTML = discountLabel ? `<span class="mod-discount-tag">${discountLabel}</span>` : '';
-  const discordUrl = siteData?.site?.discordUrl || '#';
-  const modJson = encodeURIComponent(JSON.stringify({
-    id: mod.id, name: mod.name, category: mod.category,
-    description: mod.description || '', images: allImages,
-    basePrice: mod.basePrice, featured: mod.featured
-  }));
+  const discountHTML      = discountLabel ? `<span class="mod-discount-tag">${discountLabel}</span>` : '';
 
   return `
     <div class="mod-card fade-in" style="animation-delay:${index * 0.06}s">
@@ -453,7 +421,6 @@ function buildModCard(mod, index) {
   `;
 }
 
-// ─── Carousel ────────────────────────────────────────────────
 function carouselGo(id, dir) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -473,7 +440,6 @@ function setCarouselSlide(id, index) {
   el.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
-// ─── Modal détail mod ────────────────────────────────────────
 let _allMods = [];
 
 function openModDetail(modId) {
@@ -489,7 +455,6 @@ function openModDetail(modId) {
   const allImages = Array.isArray(mod.images) && mod.images.length > 0
     ? mod.images : (mod.image ? [mod.image] : []);
 
-  // Carousel détail
   let carouselHTML = '';
   if (allImages.length === 0) {
     carouselHTML = `<div class="detail-carousel" style="display:flex;align-items:center;justify-content:center;font-size:3rem">${catIcon}</div>`;
@@ -512,11 +477,10 @@ function openModDetail(modId) {
       </div>`;
   }
 
-  // Calcul prix
   let price = mod.basePrice;
   let originalPrice = null;
   const roleDiscount = userData?.connected ? (userData.discount || 0) : 0;
-  let promoDiscount = 0;
+  let promoDiscount  = 0;
   if (siteData?.promotions) {
     for (const p of siteData.promotions) {
       if (!p.applyToCategories?.length || p.applyToCategories.includes(mod.category)) {
@@ -527,7 +491,7 @@ function openModDetail(modId) {
   const totalDiscount = Math.min(roleDiscount + promoDiscount, 100);
   if (totalDiscount > 0) {
     originalPrice = formatPrice(price);
-    price = price * (1 - totalDiscount / 100);
+    price         = price * (1 - totalDiscount / 100);
   }
 
   const discordUrl = siteData?.site?.discordUrl || '#';
@@ -580,17 +544,13 @@ function setDetailSlide(index) {
   el.querySelectorAll('.detail-carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
-// ─── Discord ─────────────────────────────────────────────────
-function loginDiscord() {
-  window.location.href = '/auth/discord';
-}
+function loginDiscord()  { window.location.href = '/auth/discord'; }
 
 async function logoutDiscord() {
   await fetch('/auth/logout', { method: 'POST' });
   window.location.reload();
 }
 
-// ─── Navbar scroll ───────────────────────────────────────────
 function setupNavbarScroll() {
   const navbar = document.getElementById('navbar');
   window.addEventListener('scroll', () => {
@@ -598,7 +558,6 @@ function setupNavbarScroll() {
   }, { passive: true });
 }
 
-// ─── Animations à la vue ─────────────────────────────────────
 function setupScrollAnimations() {
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
@@ -609,10 +568,7 @@ function setupScrollAnimations() {
     });
   }, { threshold: 0.12 });
 
-  // Observer les éléments existants
   document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
-
-  // Ré-observer quand du contenu est ajouté dynamiquement
   window._fadeObserver = observer;
 }
 
@@ -622,34 +578,28 @@ function triggerVisibleAnimations() {
   });
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
-
 function formatPrice(amount) {
   return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2
+    style: 'currency', currency: 'EUR', minimumFractionDigits: 2
   }).format(amount);
 }
 
 function getCategoryIcon(cat) {
   const icons = {
-    // Nouveaux IDs
-    'pompiers':         '🚒',
-    'samu':             '🚑',
-    'gendarmerie':      '⚜️',
-    'police-nationale': '👮',
-    'police-municipale':'🚔',
-    'autoroutier':      '🛣️',
-    'protection-civile':'🟠',
-    'civils':           '🚗',
-    'props':            '📦',
-    'scripts':          '📜',
-    // Anciennes chaînes (compatibilité)
-    'Véhicules':           '🚔',
-    'Scripts FiveM':       '⚙️',
-    'Habillages / Livrées':'🎨',
-    'Uniformes / EUP':     '👮'
+    'pompiers':          '🚒',
+    'samu':              '🚑',
+    'gendarmerie':       '⚜️',
+    'police-nationale':  '👮',
+    'police-municipale': '🚔',
+    'autoroutier':       '🛣️',
+    'protection-civile': '🟠',
+    'civils':            '🚗',
+    'props':             '📦',
+    'scripts':           '📜',
+    'Véhicules':            '🚔',
+    'Scripts FiveM':        '⚙️',
+    'Habillages / Livrées': '🎨',
+    'Uniformes / EUP':      '👮'
   };
   return icons[cat] || '📦';
 }
@@ -683,11 +633,10 @@ function toggleOption(modId, option) {
 }
 
 function updateCartUI() {
-  const count = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const count   = cart.reduce((sum, item) => sum + item.quantity, 0);
   const countEl = document.getElementById('cartCount');
   if (countEl) countEl.textContent = count;
 
-  // Mettre à jour les boutons "Ajouter"
   cart.forEach(item => {
     const btn = document.getElementById(`cart-btn-${item.id}`);
     if (btn) btn.classList.add('added');
@@ -700,10 +649,9 @@ function addToCart(modId) {
   const mod = _allMods.find(m => m.id === modId);
   if (!mod) return;
 
-  // Calculer le prix final avec réductions
   let price = mod.basePrice;
-  const roleDiscount  = userData?.connected ? (userData.discount || 0) : 0;
-  let promoDiscount   = 0;
+  const roleDiscount = userData?.connected ? (userData.discount || 0) : 0;
+  let promoDiscount  = 0;
   if (siteData?.promotions) {
     for (const p of siteData.promotions) {
       if (!p.applyToCategories?.length || p.applyToCategories.includes(mod.category)) {
@@ -716,28 +664,23 @@ function addToCart(modId) {
 
   const existing = cart.find(i => i.id === modId);
   if (existing) {
-    // Quantité limitée à 1 par mod
     showToast('Ce mod est déjà dans ton panier !');
     openCart();
     return;
-  } else {
-    cart.push({
-      id:            mod.id,
-      name:          mod.name,
-      price:         finalPrice,
-      originalPrice: totalDiscount > 0 ? price : null,
-      image:         (mod.images?.[0] || mod.image || ''),
-      quantity:      1,
-      options: {
-        debadgage:   false,
-        retexture:   false
-      }
-    });
   }
+
+  cart.push({
+    id:            mod.id,
+    name:          mod.name,
+    price:         finalPrice,
+    originalPrice: totalDiscount > 0 ? price : null,
+    image:         (mod.images?.[0] || mod.image || ''),
+    quantity:      1,
+    options:       { debadgage: false, retexture: false }
+  });
 
   saveCart();
 
-  // Animation du bouton
   const btn = document.getElementById(`cart-btn-${modId}`);
   if (btn) {
     btn.textContent = '✅ Ajouté !';
@@ -745,7 +688,6 @@ function addToCart(modId) {
     setTimeout(() => { btn.textContent = '🛒 Ajouter'; }, 1500);
   }
 
-  // Ouvrir le panier
   openCart();
 }
 
@@ -785,7 +727,7 @@ function renderCartItems() {
   if (totalEl) totalEl.textContent = formatPrice(total);
 
   container.innerHTML = cart.map(item => {
-    const opts     = item.options || {};
+    const opts       = item.options || {};
     const extraPrice = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     const totalItem  = (item.price + extraPrice) * item.quantity;
     return `
@@ -809,7 +751,6 @@ function renderCartItems() {
           <input type="checkbox" ${opts.retexture ? 'checked' : ''} onchange="toggleOption('${item.id}', 'retexture')">
           <span>🎨 Retexture <em>+5€</em></span>
         </label>
-
       </div>
     </div>
   `}).join('');
@@ -884,13 +825,11 @@ function openOrderModal() {
     </div>
   `;
 
-  // Fermer le panier, ouvrir la modale
-  const drawer = document.getElementById('cartDrawer');
+  const drawer     = document.getElementById('cartDrawer');
   const cartOverlay = document.getElementById('cartOverlay');
   drawer.classList.remove('open');
   cartOverlay.classList.remove('open');
   document.body.style.overflow = 'hidden';
-
   overlay.classList.add('open');
 }
 
@@ -915,9 +854,9 @@ async function confirmOrder() {
     const coreOption = document.getElementById('cartCoreOption')?.checked || false;
 
     const res = await fetch('/api/order', {
-      method: 'POST',
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body:    JSON.stringify({
         items:       cart,
         totalPrice:  total,
         coreOption,
@@ -928,11 +867,9 @@ async function confirmOrder() {
     const result = await res.json();
 
     if (result.success) {
-      // Vider le panier
       cart = [];
       saveCart();
 
-      // Afficher le succès
       const body = document.getElementById('orderModalBody');
       if (body) {
         body.innerHTML = `
@@ -961,7 +898,6 @@ async function confirmOrder() {
   }
 }
 
-// ─── Toast notification ───────────────────────────────────────
 function showToast(msg) {
   let toast = document.getElementById('siteToast');
   if (!toast) {
