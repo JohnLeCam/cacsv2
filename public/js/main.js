@@ -50,46 +50,7 @@ async function checkMaintenanceBanner() {
 }
 
 function showMaintenanceBanner() {
-  if (document.getElementById('maintBanner')) return;
-
-  const banner = document.createElement('div');
-  banner.id = 'maintBanner';
-  banner.style.cssText = `
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    z-index: 9999;
-    background: repeating-linear-gradient(
-      -45deg,
-      #c8102e 0px, #c8102e 20px,
-      #a00c25 20px, #a00c25 40px
-    );
-    overflow: hidden;
-    border-top: 3px solid rgba(255,255,255,0.25);
-    box-shadow: 0 -4px 30px rgba(200,16,46,0.5);
-  `;
-
-  const track = document.createElement('div');
-  track.style.cssText = `
-    display: flex;
-    animation: maintScroll 14s linear infinite;
-    white-space: nowrap;
-  `;
-
-  const text = '🔧 SITE EN MAINTENANCE — VISIBLE PAR LE STAFF UNIQUEMENT ';
-  let html = '';
-  for (let i = 0; i < 10; i++) {
-    html += `<span style="
-      display: inline-block;
-      padding: 10px 40px;
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1rem;
-      letter-spacing: 0.25em;
-      color: #fff;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.4);
-    ">${text}</span>`;
-  }
-  track.innerHTML = html + html;
-  banner.appendChild(track);
+  if (document.getElementById('maintBannerBottom')) return;
 
   if (!document.getElementById('maintBannerStyle')) {
     const style = document.createElement('style');
@@ -101,7 +62,61 @@ function showMaintenanceBanner() {
     document.head.appendChild(style);
   }
 
-  document.body.appendChild(banner);
+  const text = '🔧 SITE EN MAINTENANCE — VISIBLE PAR LE STAFF UNIQUEMENT ';
+
+  function createBanner(id) {
+    const banner = document.createElement('div');
+    banner.id = id;
+    banner.style.cssText = `
+      left: 0; right: 0;
+      z-index: 9999;
+      background: repeating-linear-gradient(
+        -45deg,
+        #c8102e 0px, #c8102e 20px,
+        #a00c25 20px, #a00c25 40px
+      );
+      overflow: hidden;
+      border: 3px solid rgba(255,255,255,0.25);
+      box-shadow: 0 4px 30px rgba(200,16,46,0.5);
+    `;
+
+    const track = document.createElement('div');
+    track.style.cssText = `
+      display: flex;
+      animation: maintScroll 14s linear infinite;
+      white-space: nowrap;
+    `;
+
+    let html = '';
+    for (let i = 0; i < 10; i++) {
+      html += `<span style="
+        display: inline-block;
+        padding: 10px 40px;
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 1rem;
+        letter-spacing: 0.25em;
+        color: #fff;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+      ">${text}</span>`;
+    }
+    track.innerHTML = html + html;
+    banner.appendChild(track);
+    return banner;
+  }
+
+  // Bandeau haut
+  const top = createBanner('maintBannerTop');
+  top.style.position = 'fixed';
+  top.style.top = '64px'; // hauteur de la navbar
+  document.body.appendChild(top);
+
+  // Bandeau bas
+  const bottom = createBanner('maintBannerBottom');
+  bottom.style.position = 'fixed';
+  bottom.style.bottom = '0';
+  document.body.appendChild(bottom);
+
+  document.body.style.paddingTop    = '109px'; // nav (64) + bandeau (45)
   document.body.style.paddingBottom = '45px';
 }
 
