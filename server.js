@@ -443,6 +443,26 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
+    // Stats options
+    let totalDebadgage = 0;
+    let totalRetexture = 0;
+    let totalCore      = 0;
+    let totalItems     = 0;
+
+    for (const order of orders) {
+      if (order.core_option) totalCore++;
+      const items = Array.isArray(order.items) ? order.items : [];
+      for (const item of items) {
+        totalItems++;
+        if (item.options?.debadgage) totalDebadgage++;
+        if (item.options?.retexture) totalRetexture++;
+      }
+    }
+
+    const pctDebadgage = totalItems   > 0 ? Math.round((totalDebadgage / totalItems)   * 100) : 0;
+    const pctRetexture = totalItems   > 0 ? Math.round((totalRetexture / totalItems)   * 100) : 0;
+    const pctCore      = totalOrders  > 0 ? Math.round((totalCore      / totalOrders)  * 100) : 0;
+
     // Commandes par jour (7 derniers jours)
     const last7 = {};
     for (let i = 6; i >= 0; i--) {
@@ -459,8 +479,11 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
       totalOrders,
       totalRevenue,
       topMods,
-      last7Days:     Object.entries(last7).map(([date, count]) => ({ date, count })),
-      recentOrders:  orders.slice(0, 10)
+      pctDebadgage,
+      pctRetexture,
+      pctCore,
+      last7Days:    Object.entries(last7).map(([date, count]) => ({ date, count })),
+      recentOrders: orders.slice(0, 10)
     });
   } catch (err) {
     console.error('Erreur /api/admin/stats:', err);

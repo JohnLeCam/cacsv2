@@ -115,6 +115,20 @@ function renderDashboard() {
 }
 
 // ─── STATS ───────────────────────────────────────────────────
+function buildOptionBar(label, pct, color) {
+  return `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:0.85rem;font-weight:600;color:var(--white)">${label}</span>
+        <span style="font-family:var(--mono);font-size:0.9rem;color:${color};font-weight:700">${pct}%</span>
+      </div>
+      <div style="height:8px;background:var(--bg-2);border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${color};border-radius:4px;transition:width 0.5s ease"></div>
+      </div>
+    </div>
+  `;
+}
+
 async function loadStats() {
   const container = document.getElementById('statsContent');
   if (!container) return;
@@ -190,6 +204,22 @@ async function loadStats() {
           <div style="display:flex;gap:8px;align-items:flex-end;height:100px">
             ${last7HTML}
           </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <span class="card-title">🔧 Options les plus demandées</span>
+        </div>
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+            ${buildOptionBar('🔧 Debadgage', stats.pctDebadgage, '#3b82f6')}
+            ${buildOptionBar('🎨 Retexture', stats.pctRetexture, '#a855f7')}
+            ${buildOptionBar('📦 Core [CORE]', stats.pctCore, '#f97316')}
+          </div>
+          <p style="color:var(--grey-m);font-size:0.75rem;margin-top:14px;font-family:var(--mono)">
+            Debadgage & Retexture : % par article · Core : % par commande
+          </p>
         </div>
       </div>
 
@@ -628,13 +658,9 @@ async function saveConfig() {
   showToast('Configuration sauvegardée !');
 }
 
-async function toggleMaintenance() {
+function toggleMaintenance() {
   document.getElementById('toggleMaintenance').classList.toggle('on');
-  const isOn = isToggleOn('toggleMaintenance');
-  updateMaintenanceStatus(isOn);
-
-  data.site = { ...data.site, maintenance_mode: isOn ? 'true' : 'false' };
-  await saveAll();
+  updateMaintenanceStatus(isToggleOn('toggleMaintenance'));
 }
 
 function updateMaintenanceStatus(isOn) {
