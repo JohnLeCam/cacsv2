@@ -59,7 +59,15 @@ discordBot.once('ready', () => {
 discordBot.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (message.content === '!close' && message.channel.name?.startsWith('ticket-')) {
-    await message.channel.send('🔒 Ticket fermé. Ce salon sera supprimé dans 5 secondes.');
+    const member = message.member;
+    const isStaff = STAFF_ROLE_IDS.some(roleId => member?.roles.cache.has(roleId));
+
+    if (!isStaff) {
+      await message.reply('❌ Seul un membre du staff peut fermer ce ticket.');
+      return;
+    }
+
+    await message.channel.send('🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
     setTimeout(() => message.channel.delete().catch(() => {}), 5000);
   }
 });
