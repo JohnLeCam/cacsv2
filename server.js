@@ -527,6 +527,10 @@ app.get('/sitemap.xml', async (req, res) => {
   } catch (err) { res.status(500).send('Erreur génération sitemap'); }
 });
 
+app.get('/cgvu', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cgvu.html'));
+});
+
 // ── DÉMARRAGE ─────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n╔══════════════════════════════════════════╗');
