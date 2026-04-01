@@ -9,182 +9,159 @@
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-0: #070708; --bg-1: #0d0d0f; --bg-2: #131315; --bg-card: #17171a;
-      --red: #d90000; --red-dim: #7a0000; --red-subtle: rgba(217,0,0,0.08);
-      --green: #22c55e; --green-subtle: rgba(34,197,94,0.1);
-      --orange: #f97316; --blue: #3b82f6;
-      --white: #f0f0f0; --grey-l: #aaa; --grey-m: #666; --grey-d: #2a2a2e;
-      --border: #222226; --border-b: #35353a;
-      --font: 'Rajdhani', sans-serif; --mono: 'JetBrains Mono', monospace;
-      --r: 4px; --tr: 0.2s ease;
+      --bg-0:#070708;--bg-1:#0d0d0f;--bg-2:#131315;--bg-card:#17171a;
+      --red:#d90000;--red-dim:#7a0000;--red-subtle:rgba(217,0,0,0.08);
+      --green:#22c55e;--green-subtle:rgba(34,197,94,0.1);
+      --orange:#f97316;--blue:#3b82f6;
+      --white:#f0f0f0;--grey-l:#aaa;--grey-m:#666;--grey-d:#2a2a2e;
+      --border:#222226;--border-b:#35353a;
+      --font:'Rajdhani',sans-serif;--mono:'JetBrains Mono',monospace;
+      --r:4px;--tr:0.2s ease;
     }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html { font-size: 15px; }
-    body { background: var(--bg-0); color: var(--white); font-family: var(--font); min-height: 100vh; display: flex; }
-    a { color: inherit; text-decoration: none; }
-    button { cursor: pointer; font-family: var(--font); }
-    input, textarea, select {
-      font-family: var(--font); background: var(--bg-2); border: 1px solid var(--border-b);
-      color: var(--white); padding: 9px 13px; border-radius: var(--r);
-      font-size: 0.9rem; outline: none; transition: border-color var(--tr); width: 100%;
-    }
-    input:focus, textarea:focus, select:focus { border-color: var(--red-dim); }
-    textarea { resize: vertical; min-height: 80px; }
-    select option { background: var(--bg-2); }
-    label { display: block; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.06em; color: var(--grey-l); margin-bottom: 5px; text-transform: uppercase; }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{font-size:15px}
+    body{background:var(--bg-0);color:var(--white);font-family:var(--font);min-height:100vh;display:flex}
+    a{color:inherit;text-decoration:none}
+    button{cursor:pointer;font-family:var(--font)}
+    input,textarea,select{font-family:var(--font);background:var(--bg-2);border:1px solid var(--border-b);color:var(--white);padding:9px 13px;border-radius:var(--r);font-size:0.9rem;outline:none;transition:border-color var(--tr);width:100%}
+    input:focus,textarea:focus,select:focus{border-color:var(--red-dim)}
+    textarea{resize:vertical;min-height:80px}
+    select option{background:var(--bg-2)}
+    label{display:block;font-size:0.82rem;font-weight:600;letter-spacing:0.06em;color:var(--grey-l);margin-bottom:5px;text-transform:uppercase}
 
-    #loginScreen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg-0); z-index: 9999; }
-    .login-box { background: var(--bg-card); border: 1px solid var(--border-b); border-top: 3px solid var(--red); border-radius: 8px; padding: 48px 40px; width: 380px; text-align: center; }
-    .login-box h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 6px; }
-    .login-box p { color: var(--grey-m); font-size: 0.88rem; margin-bottom: 32px; }
-    .login-box input { margin-bottom: 16px; text-align: center; font-size: 1rem; padding: 12px; letter-spacing: 0.1em; }
-    .login-box .btn-red { width: 100%; padding: 12px; font-size: 0.9rem; }
-    #loginError { color: var(--red); font-size: 0.85rem; margin-top: 12px; min-height: 20px; }
+    #loginScreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg-0);z-index:9999}
+    .login-box{background:var(--bg-card);border:1px solid var(--border-b);border-top:3px solid var(--red);border-radius:8px;padding:48px 40px;width:380px;text-align:center}
+    .login-box h1{font-size:1.4rem;font-weight:700;letter-spacing:0.08em;margin-bottom:6px}
+    .login-box p{color:var(--grey-m);font-size:0.88rem;margin-bottom:32px}
+    .login-box input{margin-bottom:16px;text-align:center;font-size:1rem;padding:12px;letter-spacing:0.1em}
+    .login-box .btn-red{width:100%;padding:12px;font-size:0.9rem}
+    #loginError{color:var(--red);font-size:0.85rem;margin-top:12px;min-height:20px}
 
-    #adminApp { display: none; width: 100%; }
+    #adminApp{display:none;width:100%}
 
-    .sidebar { width: 220px; flex-shrink: 0; background: var(--bg-1); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; bottom: 0; left: 0; z-index: 100; }
-    .sidebar-header { padding: 22px 20px; border-bottom: 1px solid var(--border); }
-    .sidebar-logo { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-    .sidebar-logo span { color: var(--red); }
-    .sidebar-sub { font-size: 0.7rem; color: var(--grey-m); font-family: var(--mono); letter-spacing: 0.05em; margin-top: 2px; }
-    .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
-    .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 20px; font-size: 0.88rem; font-weight: 600; letter-spacing: 0.05em; color: var(--grey-l); cursor: pointer; transition: background var(--tr), color var(--tr); border-left: 3px solid transparent; }
-    .nav-item:hover { background: rgba(255,255,255,0.03); color: var(--white); }
-    .nav-item.active { color: var(--white); background: rgba(217,0,0,0.08); border-left-color: var(--red); }
-    .nav-item .nav-icon { font-size: 1.05rem; flex-shrink: 0; }
-    .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
-    .sidebar-footer a { display: block; font-size: 0.82rem; color: var(--grey-m); margin-bottom: 8px; transition: color var(--tr); }
-    .sidebar-footer a:hover { color: var(--white); }
-    .btn-logout-admin { width: 100%; background: transparent; border: 1px solid var(--grey-d); color: var(--grey-m); padding: 8px; border-radius: var(--r); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; transition: all var(--tr); }
-    .btn-logout-admin:hover { border-color: var(--red-dim); color: var(--red); }
+    .sidebar{width:220px;flex-shrink:0;background:var(--bg-1);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:100}
+    .sidebar-header{padding:22px 20px;border-bottom:1px solid var(--border)}
+    .sidebar-logo{font-size:0.9rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase}
+    .sidebar-logo span{color:var(--red)}
+    .sidebar-sub{font-size:0.7rem;color:var(--grey-m);font-family:var(--mono);letter-spacing:0.05em;margin-top:2px}
+    .sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
+    .nav-item{display:flex;align-items:center;gap:11px;padding:10px 20px;font-size:0.88rem;font-weight:600;letter-spacing:0.05em;color:var(--grey-l);cursor:pointer;transition:background var(--tr),color var(--tr);border-left:3px solid transparent}
+    .nav-item:hover{background:rgba(255,255,255,0.03);color:var(--white)}
+    .nav-item.active{color:var(--white);background:rgba(217,0,0,0.08);border-left-color:var(--red)}
+    .nav-item .nav-icon{font-size:1.05rem;flex-shrink:0}
+    .sidebar-footer{padding:16px 20px;border-top:1px solid var(--border)}
+    .sidebar-footer a{display:block;font-size:0.82rem;color:var(--grey-m);margin-bottom:8px;transition:color var(--tr)}
+    .sidebar-footer a:hover{color:var(--white)}
+    .btn-logout-admin{width:100%;background:transparent;border:1px solid var(--grey-d);color:var(--grey-m);padding:8px;border-radius:var(--r);font-size:0.8rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;transition:all var(--tr)}
+    .btn-logout-admin:hover{border-color:var(--red-dim);color:var(--red)}
 
-    .main-content { margin-left: 220px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
-    .topbar { background: var(--bg-1); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
-    .topbar h2 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-    .save-status { font-family: var(--mono); font-size: 0.75rem; color: var(--grey-m); transition: color var(--tr); }
-    .save-status.saving { color: var(--orange); }
-    .save-status.saved  { color: var(--green); }
-    .save-status.error  { color: var(--red); }
-    .content { padding: 28px; flex: 1; }
+    .main-content{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh}
+    .topbar{background:var(--bg-1);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+    .topbar h2{font-size:1.1rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+    .save-status{font-family:var(--mono);font-size:0.75rem;color:var(--grey-m);transition:color var(--tr)}
+    .save-status.saving{color:var(--orange)}.save-status.saved{color:var(--green)}.save-status.error{color:var(--red)}
+    .content{padding:28px;flex:1}
 
-    .tab-pane        { display: none; }
-    .tab-pane.active { display: block; }
+    .tab-pane{display:none}.tab-pane.active{display:block}
 
-    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 24px; }
-    .card-header { padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .card-title { font-size: 0.9rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-    .card-body { padding: 22px; }
+    .card{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:24px}
+    .card-header{padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .card-title{font-size:0.9rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+    .card-body{padding:22px}
 
-    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .form-group { display: flex; flex-direction: column; }
-    .form-group.full { grid-column: 1 / -1; }
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .form-group{display:flex;flex-direction:column}
+    .form-group.full{grid-column:1/-1}
 
-    .toggle-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-    .toggle { position: relative; width: 40px; height: 22px; background: var(--grey-d); border-radius: 11px; border: none; cursor: pointer; transition: background var(--tr); flex-shrink: 0; }
-    .toggle::after { content: ''; position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: transform var(--tr); }
-    .toggle.on           { background: var(--green); }
-    .toggle.on::after    { transform: translateX(18px); }
-    .toggle.on.danger    { background: var(--red); }
-    .toggle-label { font-size: 0.88rem; font-weight: 600; color: var(--grey-l); }
+    .toggle-wrap{display:flex;align-items:center;gap:10px;cursor:pointer}
+    .toggle{position:relative;width:40px;height:22px;background:var(--grey-d);border-radius:11px;border:none;cursor:pointer;transition:background var(--tr);flex-shrink:0}
+    .toggle::after{content:'';position:absolute;width:16px;height:16px;background:#fff;border-radius:50%;top:3px;left:3px;transition:transform var(--tr)}
+    .toggle.on{background:var(--green)}.toggle.on::after{transform:translateX(18px)}.toggle.on.danger{background:var(--red)}
+    .toggle-label{font-size:0.88rem;font-weight:600;color:var(--grey-l)}
 
-    .img-mgr-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; min-height: 40px; }
-    .img-mgr-empty { color: var(--grey-m); font-size: 0.82rem; font-style: italic; padding: 10px 0; }
-    .img-mgr-item { display: flex; align-items: center; gap: 10px; background: var(--bg-2); border: 1px solid var(--border-b); border-radius: var(--r); padding: 8px 12px; transition: border-color 0.2s; }
-    .img-mgr-item.drag-over { border-color: var(--red); box-shadow: 0 0 0 2px rgba(204,0,0,0.25); }
-    .img-mgr-handle { cursor: grab; color: var(--grey-m); font-size: 1rem; flex-shrink: 0; }
-    .img-mgr-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-    .img-mgr-label { font-size: 0.72rem; font-family: var(--mono); color: var(--grey-l); font-weight: 600; }
-    .img-mgr-url { font-size: 0.72rem; color: var(--grey-m); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .img-mgr-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .img-mgr-btn { background: transparent; border: 1px solid var(--border-b); color: var(--grey-l); width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
-    .img-mgr-btn:hover     { background: var(--bg-2); color: #fff; }
-    .img-mgr-btn.del:hover { background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.5); color: #f87171; }
-    .img-mgr-add { display: flex; gap: 8px; align-items: center; }
-    .img-mgr-add input { flex: 1; margin: 0; }
-    .img-mgr-add .btn { white-space: nowrap; flex-shrink: 0; padding: 9px 16px; }
+    .img-mgr-list{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;min-height:40px}
+    .img-mgr-empty{color:var(--grey-m);font-size:0.82rem;font-style:italic;padding:10px 0}
+    .img-mgr-item{display:flex;align-items:center;gap:10px;background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);padding:8px 12px;transition:border-color 0.2s}
+    .img-mgr-item.drag-over{border-color:var(--red);box-shadow:0 0 0 2px rgba(204,0,0,0.25)}
+    .img-mgr-handle{cursor:grab;color:var(--grey-m);font-size:1rem;flex-shrink:0}
+    .img-mgr-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+    .img-mgr-label{font-size:0.72rem;font-family:var(--mono);color:var(--grey-l);font-weight:600}
+    .img-mgr-url{font-size:0.72rem;color:var(--grey-m);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .img-mgr-actions{display:flex;gap:6px;flex-shrink:0}
+    .img-mgr-btn{background:transparent;border:1px solid var(--border-b);color:var(--grey-l);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:0.85rem;display:flex;align-items:center;justify-content:center;transition:all 0.15s}
+    .img-mgr-btn:hover{background:var(--bg-2);color:#fff}.img-mgr-btn.del:hover{background:rgba(220,38,38,0.2);border-color:rgba(220,38,38,0.5);color:#f87171}
+    .img-mgr-add{display:flex;gap:8px;align-items:center}
+    .img-mgr-add input{flex:1;margin:0}.img-mgr-add .btn{white-space:nowrap;flex-shrink:0;padding:9px 16px}
 
-    .items-list { display: flex; flex-direction: column; gap: 12px; }
-    .item-row { background: var(--bg-2); border: 1px solid var(--border-b); border-radius: var(--r); padding: 14px 18px; display: flex; align-items: center; gap: 14px; transition: border-color 0.2s, box-shadow 0.2s; }
-    .item-row:hover { border-color: rgba(255,255,255,0.15); }
-    .drag-handle { cursor: grab; color: var(--grey-m); font-size: 1.1rem; padding: 0 2px; user-select: none; flex-shrink: 0; transition: color 0.15s; }
-    .drag-handle:hover { color: var(--grey-l); }
-    .item-row.dragging  { opacity: 0.4; border-color: var(--red); }
-    .item-row.drag-over { border-color: var(--red); box-shadow: 0 0 0 2px rgba(204,0,0,0.3); }
+    .items-list{display:flex;flex-direction:column;gap:12px}
+    .item-row{background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);padding:14px 18px;display:flex;align-items:center;gap:14px;transition:border-color 0.2s,box-shadow 0.2s}
+    .item-row:hover{border-color:rgba(255,255,255,0.15)}
+    .drag-handle{cursor:grab;color:var(--grey-m);font-size:1.1rem;padding:0 2px;user-select:none;flex-shrink:0;transition:color 0.15s}
+    .drag-handle:hover{color:var(--grey-l)}
+    .item-row.dragging{opacity:0.4;border-color:var(--red)}.item-row.drag-over{border-color:var(--red);box-shadow:0 0 0 2px rgba(204,0,0,0.3)}
 
-    .rich-editor-wrap { border: 1px solid var(--border-b); border-radius: var(--r); overflow: hidden; background: var(--bg-1); }
-    .rich-toolbar { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 10px; background: var(--bg-2); border-bottom: 1px solid var(--border-b); }
-    .rich-btn { background: transparent; border: 1px solid transparent; color: var(--grey-l); padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 0.82rem; font-weight: 600; font-family: var(--mono); transition: all 0.15s; line-height: 1.4; }
-    .rich-btn:hover { background: var(--bg-2); border-color: var(--border-b); color: #fff; }
-    .rich-btn.active { background: rgba(204,0,0,0.15); border-color: rgba(204,0,0,0.4); color: var(--red); }
-    .rich-separator { width: 1px; background: var(--border-b); margin: 2px 4px; align-self: stretch; }
-    .rich-content { min-height: 120px; max-height: 300px; overflow-y: auto; padding: 12px 14px; outline: none; font-size: 0.9rem; line-height: 1.6; color: var(--grey-l); }
-    .rich-content:empty:before { content: attr(data-placeholder); color: var(--grey-m); pointer-events: none; }
-    .rich-content b, .rich-content strong { color: #fff; font-weight: 700; }
-    .rich-content i, .rich-content em { color: #ccc; font-style: italic; }
-    .rich-content u  { text-decoration: underline; }
-    .rich-content ul { list-style: disc;    padding-left: 1.4em; margin: 6px 0; }
-    .rich-content ol { list-style: decimal; padding-left: 1.4em; margin: 6px 0; }
-    .rich-content li { margin: 2px 0; }
-    .rich-content p  { margin: 4px 0; }
+    .rich-editor-wrap{border:1px solid var(--border-b);border-radius:var(--r);overflow:hidden;background:var(--bg-1)}
+    .rich-toolbar{display:flex;flex-wrap:wrap;gap:2px;padding:8px 10px;background:var(--bg-2);border-bottom:1px solid var(--border-b)}
+    .rich-btn{background:transparent;border:1px solid transparent;color:var(--grey-l);padding:4px 9px;border-radius:5px;cursor:pointer;font-size:0.82rem;font-weight:600;font-family:var(--mono);transition:all 0.15s;line-height:1.4}
+    .rich-btn:hover{background:var(--bg-2);border-color:var(--border-b);color:#fff}.rich-btn.active{background:rgba(204,0,0,0.15);border-color:rgba(204,0,0,0.4);color:var(--red)}
+    .rich-separator{width:1px;background:var(--border-b);margin:2px 4px;align-self:stretch}
+    .rich-content{min-height:120px;max-height:300px;overflow-y:auto;padding:12px 14px;outline:none;font-size:0.9rem;line-height:1.6;color:var(--grey-l)}
+    .rich-content:empty:before{content:attr(data-placeholder);color:var(--grey-m);pointer-events:none}
+    .rich-content b,.rich-content strong{color:#fff;font-weight:700}.rich-content i,.rich-content em{color:#ccc;font-style:italic}.rich-content u{text-decoration:underline}
+    .rich-content ul{list-style:disc;padding-left:1.4em;margin:6px 0}.rich-content ol{list-style:decimal;padding-left:1.4em;margin:6px 0}.rich-content li{margin:2px 0}.rich-content p{margin:4px 0}
 
-    .item-cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .item-info    { flex: 1; min-width: 0; }
-    .item-name    { font-size: 0.92rem; font-weight: 700; color: var(--white); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item-meta    { font-size: 0.75rem; color: var(--grey-m); font-family: var(--mono); margin-top: 2px; }
-    .item-badge   { font-family: var(--mono); font-size: 0.72rem; padding: 3px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
-    .badge-visible { background: var(--green-subtle); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
-    .badge-hidden  { background: rgba(255,255,255,0.05); color: var(--grey-m); border: 1px solid var(--border-b); }
-    .badge-active  { background: var(--red-subtle); color: #ff6666; border: 1px solid rgba(217,0,0,0.3); }
-    .badge-role    { background: rgba(59,130,246,0.1); color: #7db8f7; border: 1px solid rgba(59,130,246,0.3); }
-    .item-actions  { display: flex; gap: 6px; flex-shrink: 0; }
+    .item-cat-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .item-info{flex:1;min-width:0}
+    .item-name{font-size:0.92rem;font-weight:700;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .item-meta{font-size:0.75rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px}
+    .item-badge{font-family:var(--mono);font-size:0.72rem;padding:3px 10px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+    .badge-visible{background:var(--green-subtle);color:var(--green);border:1px solid rgba(34,197,94,0.3)}
+    .badge-hidden{background:rgba(255,255,255,0.05);color:var(--grey-m);border:1px solid var(--border-b)}
+    .badge-active{background:var(--red-subtle);color:#ff6666;border:1px solid rgba(217,0,0,0.3)}
+    .badge-role{background:rgba(59,130,246,0.1);color:#7db8f7;border:1px solid rgba(59,130,246,0.3)}
+    .item-actions{display:flex;gap:6px;flex-shrink:0}
 
-    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 16px; border-radius: var(--r); font-family: var(--font); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; border: none; transition: all var(--tr); }
-    .btn-red       { background: var(--red); color: #fff; }
-    .btn-red:hover { background: #ff1010; transform: translateY(-1px); }
-    .btn-ghost       { background: transparent; border: 1px solid var(--border-b); color: var(--grey-l); }
-    .btn-ghost:hover { color: var(--white); background: rgba(255,255,255,0.04); }
-    .btn-danger       { background: transparent; border: 1px solid rgba(217,0,0,0.3); color: var(--red); }
-    .btn-danger:hover { background: var(--red-subtle); border-color: var(--red); }
-    .btn-sm { padding: 5px 11px; font-size: 0.75rem; }
-    .btn-icon { background: transparent; border: 1px solid var(--border-b); color: var(--grey-m); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: var(--r); font-size: 0.9rem; transition: all var(--tr); }
-    .btn-icon:hover     { color: var(--white); background: rgba(255,255,255,0.05); }
-    .btn-icon.del:hover { color: var(--red); border-color: rgba(217,0,0,0.4); background: var(--red-subtle); }
+    .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border-radius:var(--r);font-family:var(--font);font-size:0.82rem;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;border:none;transition:all var(--tr)}
+    .btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#ff1010;transform:translateY(-1px)}
+    .btn-ghost{background:transparent;border:1px solid var(--border-b);color:var(--grey-l)}.btn-ghost:hover{color:var(--white);background:rgba(255,255,255,0.04)}
+    .btn-danger{background:transparent;border:1px solid rgba(217,0,0,0.3);color:var(--red)}.btn-danger:hover{background:var(--red-subtle);border-color:var(--red)}
+    .btn-sm{padding:5px 11px;font-size:0.75rem}
+    .btn-icon{background:transparent;border:1px solid var(--border-b);color:var(--grey-m);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);font-size:0.9rem;transition:all var(--tr)}
+    .btn-icon:hover{color:var(--white);background:rgba(255,255,255,0.05)}.btn-icon.del:hover{color:var(--red);border-color:rgba(217,0,0,0.4);background:var(--red-subtle)}
 
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity var(--tr); }
-    .modal-overlay.open { opacity: 1; pointer-events: all; }
-    .modal { background: var(--bg-card); border: 1px solid var(--border-b); border-top: 3px solid var(--red); border-radius: 8px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; transform: translateY(12px); transition: transform var(--tr); }
-    .modal-overlay.open .modal { transform: translateY(0); }
-    .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-    .modal-title  { font-size: 1rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-    .modal-close  { background: transparent; border: none; color: var(--grey-m); font-size: 1.2rem; transition: color var(--tr); }
-    .modal-close:hover { color: var(--white); }
-    .modal-body   { padding: 24px; }
-    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity var(--tr)}
+    .modal-overlay.open{opacity:1;pointer-events:all}
+    .modal{background:var(--bg-card);border:1px solid var(--border-b);border-top:3px solid var(--red);border-radius:8px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;transform:translateY(12px);transition:transform var(--tr)}
+    .modal-overlay.open .modal{transform:translateY(0)}
+    .modal-header{padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .modal-title{font-size:1rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase}
+    .modal-close{background:transparent;border:none;color:var(--grey-m);font-size:1.2rem;transition:color var(--tr)}.modal-close:hover{color:var(--white)}
+    .modal-body{padding:24px}.modal-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
 
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
-    .stat-card  { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 20px; }
-    .stat-value { font-size: 2.2rem; font-weight: 700; font-family: var(--mono); color: var(--white); line-height: 1; margin-bottom: 6px; }
-    .stat-value.red   { color: var(--red); }
-    .stat-value.green { color: var(--green); }
-    .stat-value.blue  { color: var(--blue); }
-    .stat-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--grey-m); }
+    .stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;margin-bottom:28px}
+    .stat-card{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:20px}
+    .stat-value{font-size:2.2rem;font-weight:700;font-family:var(--mono);color:var(--white);line-height:1;margin-bottom:6px}
+    .stat-value.red{color:var(--red)}.stat-value.green{color:var(--green)}.stat-value.blue{color:var(--blue)}
+    .stat-label{font-size:0.75rem;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--grey-m)}
 
-    .maintenance-box { background: rgba(217,0,0,0.06); border: 1px solid rgba(217,0,0,0.2); border-radius: 6px; padding: 20px 22px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
-    .maintenance-box-left { flex: 1; min-width: 200px; }
-    .maintenance-box-title { font-size: 0.95rem; font-weight: 700; color: var(--white); margin-bottom: 4px; }
-    .maintenance-box-desc  { font-size: 0.82rem; color: var(--grey-m); line-height: 1.5; }
-    .maintenance-box-right { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
-    #maintenanceStatus { font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; }
+    .maintenance-box{background:rgba(217,0,0,0.06);border:1px solid rgba(217,0,0,0.2);border-radius:6px;padding:20px 22px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+    .maintenance-box-left{flex:1;min-width:200px}
+    .maintenance-box-title{font-size:0.95rem;font-weight:700;color:var(--white);margin-bottom:4px}
+    .maintenance-box-desc{font-size:0.82rem;color:var(--grey-m);line-height:1.5}
+    .maintenance-box-right{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+    #maintenanceStatus{font-family:var(--mono);font-size:0.72rem;font-weight:600;letter-spacing:0.08em}
 
-    #toast { position: fixed; bottom: 28px; right: 28px; background: var(--bg-card); border: 1px solid var(--border-b); border-left: 4px solid var(--green); padding: 14px 22px; border-radius: var(--r); font-size: 0.88rem; font-weight: 600; color: var(--white); z-index: 9999; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow: 0 8px 32px rgba(0,0,0,0.4); max-width: 320px; }
-    #toast.show  { transform: translateX(0); }
-    #toast.error { border-left-color: var(--red); }
+    #toast{position:fixed;bottom:28px;right:28px;background:var(--bg-card);border:1px solid var(--border-b);border-left:4px solid var(--green);padding:14px 22px;border-radius:var(--r);font-size:0.88rem;font-weight:600;color:var(--white);z-index:9999;transform:translateX(120%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);box-shadow:0 8px 32px rgba(0,0,0,0.4);max-width:320px}
+    #toast.show{transform:translateX(0)}#toast.error{border-left-color:var(--red)}
 
-    hr.sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
-    .color-preview-wrap { display: flex; align-items: center; gap: 10px; }
-    .color-preview-wrap input[type="text"] { flex: 1; }
-    input[type="color"] { width: 36px; height: 36px; padding: 2px; border-radius: var(--r); cursor: pointer; flex-shrink: 0; }
+    hr.sep{border:none;border-top:1px solid var(--border);margin:20px 0}
+    .color-preview-wrap{display:flex;align-items:center;gap:10px}.color-preview-wrap input[type="text"]{flex:1}
+    input[type="color"]{width:36px;height:36px;padding:2px;border-radius:var(--r);cursor:pointer;flex-shrink:0}
+
+    /* Order status select */
+    .order-status-select{background:var(--bg-2);border:1px solid var(--border-b);color:var(--white);padding:6px 10px;border-radius:var(--r);font-family:var(--font);font-size:0.8rem;cursor:pointer;outline:none;min-width:150px;transition:border-color var(--tr)}
+    .order-status-select:focus{border-color:var(--blue)}
+    .order-status-select:disabled{opacity:0.5;cursor:not-allowed}
   </style>
 </head>
 <body>
@@ -198,14 +175,15 @@
         <div class="sidebar-sub">Panel Admin</div>
       </div>
       <nav class="sidebar-nav">
-        <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="nav-icon">📊</span> Dashboard</div>
-        <div class="nav-item" data-tab="stats"     onclick="switchTab('stats')">    <span class="nav-icon">📈</span> Statistiques</div>
-        <div class="nav-item" data-tab="mods"      onclick="switchTab('mods')">     <span class="nav-icon">🎮</span> Mods</div>
-        <div class="nav-item" data-tab="categories" onclick="switchTab('categories')"><span class="nav-icon">🏷️</span> Catégories</div>
-        <div class="nav-item" data-tab="promos"    onclick="switchTab('promos')">   <span class="nav-icon">🔥</span> Promotions</div>
-        <div class="nav-item" data-tab="roles"     onclick="switchTab('roles')">    <span class="nav-icon">🎖️</span> Rôles Discord</div>
-        <div class="nav-item" data-tab="config"    onclick="switchTab('config')">   <span class="nav-icon">⚙️</span> Configuration</div>
-        <div class="nav-item" data-tab="settings"  onclick="switchTab('settings')"> <span class="nav-icon">🔒</span> Paramètres</div>
+        <div class="nav-item active" data-tab="dashboard"  onclick="switchTab('dashboard')"> <span class="nav-icon">📊</span> Dashboard</div>
+        <div class="nav-item"        data-tab="orders"     onclick="switchTab('orders')">    <span class="nav-icon">📋</span> Commandes</div>
+        <div class="nav-item"        data-tab="stats"      onclick="switchTab('stats')">     <span class="nav-icon">📈</span> Statistiques</div>
+        <div class="nav-item"        data-tab="mods"       onclick="switchTab('mods')">      <span class="nav-icon">🎮</span> Mods</div>
+        <div class="nav-item"        data-tab="categories" onclick="switchTab('categories')"><span class="nav-icon">🏷️</span> Catégories</div>
+        <div class="nav-item"        data-tab="promos"     onclick="switchTab('promos')">    <span class="nav-icon">🔥</span> Promotions</div>
+        <div class="nav-item"        data-tab="roles"      onclick="switchTab('roles')">     <span class="nav-icon">🎖️</span> Rôles Discord</div>
+        <div class="nav-item"        data-tab="config"     onclick="switchTab('config')">    <span class="nav-icon">⚙️</span> Configuration</div>
+        <div class="nav-item"        data-tab="settings"   onclick="switchTab('settings')">  <span class="nav-icon">🔒</span> Paramètres</div>
       </nav>
       <div class="sidebar-footer">
         <a href="/" target="_blank">← Voir le site</a>
@@ -224,77 +202,50 @@
         <!-- DASHBOARD -->
         <div class="tab-pane active" id="tab-dashboard">
           <div class="stats-grid" id="statsGrid"></div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">Bienvenue</span></div>
-            <div class="card-body">
-              <p style="color:var(--grey-l);font-size:0.95rem;line-height:1.7">
-                Utilise la barre latérale pour gérer tes mods, promotions et rôles Discord.<br>
-                Les modifications sont sauvegardées automatiquement après chaque action.<br><br>
-                <strong style="color:var(--white)">💡 Rappel :</strong>
-                Configure d'abord <code style="font-family:var(--mono);color:var(--red);font-size:0.85rem">config/discord.config.js</code> pour activer la connexion Discord.
-              </p>
-            </div>
+          <div class="card"><div class="card-header"><span class="card-title">Bienvenue</span></div>
+            <div class="card-body"><p style="color:var(--grey-l);font-size:0.95rem;line-height:1.7">Utilise la barre latérale pour gérer tes mods, promotions et rôles Discord.<br>Les modifications sont sauvegardées automatiquement après chaque action.</p></div>
           </div>
+        </div>
+
+        <!-- COMMANDES -->
+        <div class="tab-pane" id="tab-orders">
+          <div id="ordersContent"><div style="color:var(--grey-m);font-size:0.9rem;padding:20px 0">Chargement...</div></div>
         </div>
 
         <!-- STATISTIQUES -->
         <div class="tab-pane" id="tab-stats">
-          <div id="statsContent">
-            <div style="color:var(--grey-m);font-size:0.9rem;padding:20px 0">Chargement...</div>
-          </div>
+          <div id="statsContent"><div style="color:var(--grey-m);font-size:0.9rem;padding:20px 0">Chargement...</div></div>
         </div>
 
         <!-- MODS -->
         <div class="tab-pane" id="tab-mods">
           <div class="card">
-            <div class="card-header">
-              <span class="card-title">Liste des mods</span>
-              <button class="btn btn-red btn-sm" onclick="openModModal()">+ Ajouter un mod</button>
-            </div>
-            <div class="card-body">
-              <div class="items-list" id="modsList"></div>
-            </div>
+            <div class="card-header"><span class="card-title">Liste des mods</span><button class="btn btn-red btn-sm" onclick="openModModal()">+ Ajouter un mod</button></div>
+            <div class="card-body"><div class="items-list" id="modsList"></div></div>
           </div>
         </div>
 
         <!-- CATÉGORIES -->
         <div class="tab-pane" id="tab-categories">
           <div class="card">
-            <div class="card-header">
-              <span class="card-title">Catégories de mods</span>
-              <button class="btn btn-red" onclick="openCatModal()">+ Ajouter</button>
-            </div>
-            <div class="card-body">
-              <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:16px">Glisse pour réordonner · Les couleurs s'affichent sur les boutons de filtre.</p>
-              <div class="items-list" id="categoriesList"></div>
-            </div>
+            <div class="card-header"><span class="card-title">Catégories de mods</span><button class="btn btn-red" onclick="openCatModal()">+ Ajouter</button></div>
+            <div class="card-body"><p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:16px">Glisse pour réordonner · Les couleurs s'affichent sur les boutons de filtre.</p><div class="items-list" id="categoriesList"></div></div>
           </div>
         </div>
 
         <!-- PROMOTIONS -->
         <div class="tab-pane" id="tab-promos">
           <div class="card">
-            <div class="card-header">
-              <span class="card-title">Promotions actives</span>
-              <button class="btn btn-red btn-sm" onclick="openPromoModal()">+ Ajouter une promo</button>
-            </div>
-            <div class="card-body">
-              <div class="items-list" id="promosList"></div>
-            </div>
+            <div class="card-header"><span class="card-title">Promotions actives</span><button class="btn btn-red btn-sm" onclick="openPromoModal()">+ Ajouter une promo</button></div>
+            <div class="card-body"><div class="items-list" id="promosList"></div></div>
           </div>
         </div>
 
         <!-- RÔLES -->
         <div class="tab-pane" id="tab-roles">
           <div class="card">
-            <div class="card-header">
-              <span class="card-title">Rôles & Réductions</span>
-              <button class="btn btn-red btn-sm" onclick="openRoleModal()">+ Ajouter un rôle</button>
-            </div>
-            <div class="card-body">
-              <p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Chaque rôle Discord peut donner une réduction automatique.</p>
-              <div class="items-list" id="rolesList"></div>
-            </div>
+            <div class="card-header"><span class="card-title">Rôles & Réductions</span><button class="btn btn-red btn-sm" onclick="openRoleModal()">+ Ajouter un rôle</button></div>
+            <div class="card-body"><p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Chaque rôle Discord peut donner une réduction automatique.</p><div class="items-list" id="rolesList"></div></div>
           </div>
         </div>
 
@@ -306,59 +257,32 @@
               <div class="maintenance-box">
                 <div class="maintenance-box-left">
                   <div class="maintenance-box-title">🔴 Contrôle d'accès au site</div>
-                  <div class="maintenance-box-desc">
-                    Quand activé, les visiteurs non connectés et les membres sans rôle staff sont redirigés vers la page de maintenance.<br>
-                    Le staff voit le site normalement avec un bandeau d'avertissement en bas de page.
-                  </div>
+                  <div class="maintenance-box-desc">Quand activé, les visiteurs non connectés et les membres sans rôle staff sont redirigés vers la page de maintenance.</div>
                 </div>
                 <div class="maintenance-box-right">
-                  <div class="toggle-wrap" onclick="toggleMaintenance()">
-                    <button class="toggle danger" id="toggleMaintenance"></button>
-                  </div>
+                  <div class="toggle-wrap" onclick="toggleMaintenance()"><button class="toggle danger" id="toggleMaintenance"></button></div>
                   <span id="maintenanceStatus" style="color:var(--green)">🟢 Site accessible</span>
                 </div>
               </div>
             </div>
           </div>
-
           <div class="card">
             <div class="card-header"><span class="card-title">Informations du site</span></div>
             <div class="card-body">
               <div class="form-grid">
-                <div class="form-group">
-                  <label>Nom du site</label>
-                  <input type="text" id="cfg-title" placeholder="Cac's GTA V Mods">
-                </div>
-                <div class="form-group">
-                  <label>Tagline Hero</label>
-                  <input type="text" id="cfg-heroTagline" placeholder="CAC'S GTA V MODS">
-                </div>
-                <div class="form-group full">
-                  <label>Sous-titre Hero</label>
-                  <input type="text" id="cfg-subtitle" placeholder="Mods FiveM de qualité...">
-                </div>
-                <div class="form-group full">
-                  <label>Lien Discord (pour les boutons)</label>
-                  <input type="text" id="cfg-discordUrl" placeholder="https://discord.gg/...">
-                </div>
-                <div class="form-group full">
-                  <label>Annonce (bandeau défilant — laisser vide pour masquer)</label>
-                  <input type="text" id="cfg-announcement" placeholder="🔥 Grosse sortie ce vendredi !">
-                </div>
+                <div class="form-group"><label>Nom du site</label><input type="text" id="cfg-title" placeholder="Cac's GTA V Mods"></div>
+                <div class="form-group"><label>Tagline Hero</label><input type="text" id="cfg-heroTagline" placeholder="CAC'S GTA V MODS"></div>
+                <div class="form-group full"><label>Sous-titre Hero</label><input type="text" id="cfg-subtitle" placeholder="Mods FiveM de qualité..."></div>
+                <div class="form-group full"><label>Lien Discord</label><input type="text" id="cfg-discordUrl" placeholder="https://discord.gg/..."></div>
+                <div class="form-group full"><label>Annonce (laisser vide pour masquer)</label><input type="text" id="cfg-announcement" placeholder="🔥 Grosse sortie ce vendredi !"></div>
               </div>
               <hr class="sep">
-              <div style="display:flex;gap:12px;justify-content:flex-end">
-                <button class="btn btn-red" onclick="saveConfig()">💾 Sauvegarder</button>
-              </div>
+              <div style="display:flex;gap:12px;justify-content:flex-end"><button class="btn btn-red" onclick="saveConfig()">💾 Sauvegarder</button></div>
             </div>
           </div>
-
           <div class="card">
             <div class="card-header"><span class="card-title">Catégories de mods</span></div>
-            <div class="card-body">
-              <p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Les catégories se gèrent dans l'onglet dédié.</p>
-              <button class="btn btn-ghost" onclick="switchTab('categories')">🏷️ Gérer les catégories →</button>
-            </div>
+            <div class="card-body"><p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Les catégories se gèrent dans l'onglet dédié.</p><button class="btn btn-ghost" onclick="switchTab('categories')">🏷️ Gérer les catégories →</button></div>
           </div>
         </div>
 
@@ -368,18 +292,10 @@
             <div class="card-header"><span class="card-title">Changer le mot de passe admin</span></div>
             <div class="card-body">
               <div class="form-grid" style="max-width:400px">
-                <div class="form-group full">
-                  <label>Nouveau mot de passe</label>
-                  <input type="password" id="newPwd1" placeholder="Nouveau mot de passe">
-                </div>
-                <div class="form-group full">
-                  <label>Confirmer le mot de passe</label>
-                  <input type="password" id="newPwd2" placeholder="Confirmer">
-                </div>
+                <div class="form-group full"><label>Nouveau mot de passe</label><input type="password" id="newPwd1" placeholder="Nouveau mot de passe"></div>
+                <div class="form-group full"><label>Confirmer le mot de passe</label><input type="password" id="newPwd2" placeholder="Confirmer"></div>
               </div>
-              <div style="margin-top:16px">
-                <button class="btn btn-red" onclick="changePassword()">🔒 Changer le mot de passe</button>
-              </div>
+              <div style="margin-top:16px"><button class="btn btn-red" onclick="changePassword()">🔒 Changer le mot de passe</button></div>
             </div>
           </div>
         </div>
@@ -391,201 +307,86 @@
   <!-- MODALE CATÉGORIE -->
   <div class="modal-overlay" id="catModal" onclick="if(event.target===this)closeCatModal()">
     <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title" id="catModalTitle">Nouvelle catégorie</span>
-        <button class="modal-close" onclick="closeCatModal()">✕</button>
-      </div>
+      <div class="modal-header"><span class="modal-title" id="catModalTitle">Nouvelle catégorie</span><button class="modal-close" onclick="closeCatModal()">✕</button></div>
       <div class="modal-body">
         <input type="hidden" id="catIdx">
         <div class="form-grid">
-          <div class="form-group">
-            <label>Identifiant (slug)</label>
-            <input type="text" id="catId" placeholder="pompiers" oninput="autoSlug()">
-            <small style="color:var(--grey-m);font-size:0.72rem">Minuscules, tirets uniquement.</small>
-          </div>
-          <div class="form-group">
-            <label>Nom affiché</label>
-            <input type="text" id="catName" placeholder="Sapeurs Pompiers" oninput="autoSlug()">
-          </div>
-          <div class="form-group">
-            <label>Icône (emoji)</label>
-            <input type="text" id="catIcon" placeholder="🚒" maxlength="4" style="font-size:1.4rem;text-align:center">
-          </div>
-          <div class="form-group">
-            <label>Couleur</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="text" id="catColor" placeholder="#CC0000" oninput="updateCatSwatch()" style="flex:1">
-              <input type="color" id="catColorPicker" value="#CC0000" oninput="syncCatColor()" style="width:40px;height:38px;padding:2px;border:1px solid var(--border-b);background:var(--bg-2);border-radius:var(--r);cursor:pointer">
-            </div>
-          </div>
-          <div class="form-group full">
-            <label>Aperçu</label>
-            <div id="catPreview" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid #333;border-radius:4px;font-size:0.85rem;font-weight:600;letter-spacing:0.08em;background:rgba(0,0,0,0.2)">
-              <span id="catPreviewIcon">🚒</span>
-              <span id="catPreviewName">Sapeurs Pompiers</span>
-            </div>
-          </div>
+          <div class="form-group"><label>Identifiant (slug)</label><input type="text" id="catId" placeholder="pompiers" oninput="autoSlug()"><small style="color:var(--grey-m);font-size:0.72rem">Minuscules, tirets uniquement.</small></div>
+          <div class="form-group"><label>Nom affiché</label><input type="text" id="catName" placeholder="Sapeurs Pompiers" oninput="autoSlug()"></div>
+          <div class="form-group"><label>Icône (emoji)</label><input type="text" id="catIcon" placeholder="🚒" maxlength="4" style="font-size:1.4rem;text-align:center"></div>
+          <div class="form-group"><label>Couleur</label><div style="display:flex;gap:8px;align-items:center"><input type="text" id="catColor" placeholder="#CC0000" oninput="updateCatSwatch()" style="flex:1"><input type="color" id="catColorPicker" value="#CC0000" oninput="syncCatColor()" style="width:40px;height:38px;padding:2px;border:1px solid var(--border-b);background:var(--bg-2);border-radius:var(--r);cursor:pointer"></div></div>
+          <div class="form-group full"><label>Aperçu</label><div id="catPreview" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:1px solid #333;border-radius:4px;font-size:0.85rem;font-weight:600;letter-spacing:0.08em;background:rgba(0,0,0,0.2)"><span id="catPreviewIcon">🚒</span><span id="catPreviewName">Sapeurs Pompiers</span></div></div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeCatModal()">Annuler</button>
-        <button class="btn btn-red" onclick="saveCat()">💾 Sauvegarder</button>
-      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeCatModal()">Annuler</button><button class="btn btn-red" onclick="saveCat()">💾 Sauvegarder</button></div>
     </div>
   </div>
 
   <!-- MODALE MOD -->
   <div class="modal-overlay" id="modModal" onclick="if(event.target===this)closeModModal()">
     <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title" id="modModalTitle">Nouveau mod</span>
-        <button class="modal-close" onclick="closeModModal()">✕</button>
-      </div>
+      <div class="modal-header"><span class="modal-title" id="modModalTitle">Nouveau mod</span><button class="modal-close" onclick="closeModModal()">✕</button></div>
       <div class="modal-body">
         <input type="hidden" id="modId">
         <div class="form-grid">
-          <div class="form-group full">
-            <label>Nom du mod</label>
-            <input type="text" id="modName" placeholder="Pack Gendarmerie Nationale">
-          </div>
-          <div class="form-group">
-            <label>Catégorie</label>
-            <select id="modCategory"></select>
-          </div>
-          <div class="form-group">
-            <label>Prix de base (€)</label>
-            <input type="number" id="modPrice" placeholder="15.00" min="0" step="0.01">
-          </div>
-          <div class="form-group full">
-            <label>Description</label>
+          <div class="form-group full"><label>Nom du mod</label><input type="text" id="modName" placeholder="Pack Gendarmerie Nationale"></div>
+          <div class="form-group"><label>Catégorie</label><select id="modCategory"></select></div>
+          <div class="form-group"><label>Prix de base (€)</label><input type="number" id="modPrice" placeholder="15.00" min="0" step="0.01"></div>
+          <div class="form-group full"><label>Description</label>
             <div class="rich-editor-wrap">
               <div class="rich-toolbar">
-                <button class="rich-btn" onclick="rfmt('bold')"><b>G</b></button>
-                <button class="rich-btn" onclick="rfmt('italic')"><i>I</i></button>
-                <button class="rich-btn" onclick="rfmt('underline')"><u>S</u></button>
-                <div class="rich-separator"></div>
-                <button class="rich-btn" onclick="rfmt('insertUnorderedList')">• Liste</button>
-                <button class="rich-btn" onclick="rfmt('insertOrderedList')">1. Liste</button>
-                <div class="rich-separator"></div>
-                <button class="rich-btn" onclick="rfmt('formatBlock','p')">¶ Para</button>
-                <button class="rich-btn" onclick="rfmt('removeFormat')">✕ Format</button>
+                <button class="rich-btn" onclick="rfmt('bold')"><b>G</b></button><button class="rich-btn" onclick="rfmt('italic')"><i>I</i></button><button class="rich-btn" onclick="rfmt('underline')"><u>S</u></button>
+                <div class="rich-separator"></div><button class="rich-btn" onclick="rfmt('insertUnorderedList')">• Liste</button><button class="rich-btn" onclick="rfmt('insertOrderedList')">1. Liste</button>
+                <div class="rich-separator"></div><button class="rich-btn" onclick="rfmt('formatBlock','p')">¶ Para</button><button class="rich-btn" onclick="rfmt('removeFormat')">✕ Format</button>
               </div>
               <div class="rich-content" id="modDesc" contenteditable="true" data-placeholder="Description du mod..."></div>
             </div>
           </div>
-          <div class="form-group full">
-            <label>Images & Vidéos (YouTube accepté · glisser pour réordonner · la 1ère = miniature principale)</label>
+          <div class="form-group full"><label>Images & Vidéos (YouTube accepté · glisser pour réordonner)</label>
             <div class="img-mgr-list" id="imageManager"></div>
-            <div class="img-mgr-add">
-              <input type="text" id="imgUrlInput" placeholder="https://i.imgur.com/image.jpg · https://youtu.be/xxxxx" onkeydown="if(event.key==='Enter')imgAdd()">
-              <button class="btn btn-ghost" onclick="imgAdd()">+ Ajouter</button>
-            </div>
+            <div class="img-mgr-add"><input type="text" id="imgUrlInput" placeholder="https://i.imgur.com/image.jpg · https://youtu.be/xxxxx" onkeydown="if(event.key==='Enter')imgAdd()"><button class="btn btn-ghost" onclick="imgAdd()">+ Ajouter</button></div>
           </div>
-          <div class="form-group">
-            <label>&nbsp;</label>
-            <div class="toggle-wrap" onclick="toggleModFeatured()">
-              <button class="toggle" id="toggleFeatured"></button>
-              <span class="toggle-label">⭐ En vedette</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>&nbsp;</label>
-            <div class="toggle-wrap" onclick="toggleModVisible()">
-              <button class="toggle on" id="toggleVisible"></button>
-              <span class="toggle-label">👁️ Visible sur le site</span>
-            </div>
-          </div>
+          <div class="form-group"><label>&nbsp;</label><div class="toggle-wrap" onclick="toggleModFeatured()"><button class="toggle" id="toggleFeatured"></button><span class="toggle-label">⭐ En vedette</span></div></div>
+          <div class="form-group"><label>&nbsp;</label><div class="toggle-wrap" onclick="toggleModVisible()"><button class="toggle on" id="toggleVisible"></button><span class="toggle-label">👁️ Visible sur le site</span></div></div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModModal()">Annuler</button>
-        <button class="btn btn-red" onclick="saveMod()">💾 Sauvegarder</button>
-      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModModal()">Annuler</button><button class="btn btn-red" onclick="saveMod()">💾 Sauvegarder</button></div>
     </div>
   </div>
 
   <!-- MODALE PROMO -->
   <div class="modal-overlay" id="promoModal" onclick="if(event.target===this)closePromoModal()">
     <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title" id="promoModalTitle">Nouvelle promotion</span>
-        <button class="modal-close" onclick="closePromoModal()">✕</button>
-      </div>
+      <div class="modal-header"><span class="modal-title" id="promoModalTitle">Nouvelle promotion</span><button class="modal-close" onclick="closePromoModal()">✕</button></div>
       <div class="modal-body">
         <input type="hidden" id="promoId">
         <div class="form-grid">
-          <div class="form-group full">
-            <label>Nom de la promotion</label>
-            <input type="text" id="promoName" placeholder="🔥 PROMO LANCEMENT">
-          </div>
-          <div class="form-group full">
-            <label>Description</label>
-            <textarea id="promoDesc" placeholder="20% de réduction sur les véhicules !"></textarea>
-          </div>
-          <div class="form-group">
-            <label>Réduction (%)</label>
-            <input type="number" id="promoDiscount" placeholder="20" min="1" max="100">
-          </div>
-          <div class="form-group">
-            <label>Date de fin</label>
-            <input type="datetime-local" id="promoEndDate">
-          </div>
-          <div class="form-group full">
-            <label>Applicable sur les catégories</label>
-            <div id="promoCatCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
-          </div>
-          <div class="form-group">
-            <label>&nbsp;</label>
-            <div class="toggle-wrap" onclick="togglePromoActive()">
-              <button class="toggle on" id="togglePromoActive"></button>
-              <span class="toggle-label">✅ Promotion active</span>
-            </div>
-          </div>
+          <div class="form-group full"><label>Nom de la promotion</label><input type="text" id="promoName" placeholder="🔥 PROMO LANCEMENT"></div>
+          <div class="form-group full"><label>Description</label><textarea id="promoDesc" placeholder="20% de réduction sur les véhicules !"></textarea></div>
+          <div class="form-group"><label>Réduction (%)</label><input type="number" id="promoDiscount" placeholder="20" min="1" max="100"></div>
+          <div class="form-group"><label>Date de fin</label><input type="datetime-local" id="promoEndDate"></div>
+          <div class="form-group full"><label>Applicable sur les catégories</label><div id="promoCatCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div></div>
+          <div class="form-group"><label>&nbsp;</label><div class="toggle-wrap" onclick="togglePromoActive()"><button class="toggle on" id="togglePromoActive"></button><span class="toggle-label">✅ Promotion active</span></div></div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closePromoModal()">Annuler</button>
-        <button class="btn btn-red" onclick="savePromo()">💾 Sauvegarder</button>
-      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closePromoModal()">Annuler</button><button class="btn btn-red" onclick="savePromo()">💾 Sauvegarder</button></div>
     </div>
   </div>
 
   <!-- MODALE RÔLE -->
   <div class="modal-overlay" id="roleModal" onclick="if(event.target===this)closeRoleModal()">
     <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title" id="roleModalTitle">Nouveau rôle</span>
-        <button class="modal-close" onclick="closeRoleModal()">✕</button>
-      </div>
+      <div class="modal-header"><span class="modal-title" id="roleModalTitle">Nouveau rôle</span><button class="modal-close" onclick="closeRoleModal()">✕</button></div>
       <div class="modal-body">
         <input type="hidden" id="roleIdx">
         <div class="form-grid">
-          <div class="form-group full">
-            <label>ID du rôle Discord</label>
-            <input type="text" id="roleId" placeholder="Ex: 1234567890123456789">
-            <small style="color:var(--grey-m);font-size:0.75rem;margin-top:4px;display:block">Mode développeur Discord → clic droit sur le rôle → "Copier l'identifiant"</small>
-          </div>
-          <div class="form-group">
-            <label>Nom affiché</label>
-            <input type="text" id="roleName" placeholder="VIP">
-          </div>
-          <div class="form-group">
-            <label>Réduction accordée (%)</label>
-            <input type="number" id="roleDiscount" placeholder="15" min="0" max="100">
-          </div>
-          <div class="form-group full">
-            <label>Couleur du badge</label>
-            <div class="color-preview-wrap">
-              <input type="text" id="roleColor" placeholder="#ffd700" oninput="updateColorSwatch()">
-              <input type="color" id="roleColorPicker" value="#ffd700" oninput="syncColorFromPicker()">
-            </div>
-          </div>
+          <div class="form-group full"><label>ID du rôle Discord</label><input type="text" id="roleId" placeholder="Ex: 1234567890123456789"><small style="color:var(--grey-m);font-size:0.75rem;margin-top:4px;display:block">Mode développeur Discord → clic droit sur le rôle → "Copier l'identifiant"</small></div>
+          <div class="form-group"><label>Nom affiché</label><input type="text" id="roleName" placeholder="VIP"></div>
+          <div class="form-group"><label>Réduction accordée (%)</label><input type="number" id="roleDiscount" placeholder="15" min="0" max="100"></div>
+          <div class="form-group full"><label>Couleur du badge</label><div class="color-preview-wrap"><input type="text" id="roleColor" placeholder="#ffd700" oninput="updateColorSwatch()"><input type="color" id="roleColorPicker" value="#ffd700" oninput="syncColorFromPicker()"></div></div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeRoleModal()">Annuler</button>
-        <button class="btn btn-red" onclick="saveRole()">💾 Sauvegarder</button>
-      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeRoleModal()">Annuler</button><button class="btn btn-red" onclick="saveRole()">💾 Sauvegarder</button></div>
     </div>
   </div>
 
