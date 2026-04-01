@@ -120,12 +120,16 @@ button { cursor: pointer; font-family: var(--font-ui); }
   gap: 24px;
 }
 
+/* ── FIX : logo avec gap entre image et texte ── */
 .nav-logo {
   font-family: var(--font-display);
   font-size: 1.35rem;
   letter-spacing: 0.08em;
   color: var(--white);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .logo-red  { color: var(--red); }
@@ -375,17 +379,21 @@ button { cursor: pointer; font-family: var(--font-ui); }
   animation: heroFadeIn 0.9s ease 0.3s both;
 }
 
+/* ── FIX : hero-actions au-dessus du scroll indicator ── */
 .hero-actions {
   display: flex;
   gap: 16px;
   justify-content: center;
   flex-wrap: wrap;
   animation: heroFadeIn 0.9s ease 0.4s both;
+  position: relative;
+  z-index: 2;
 }
 
+/* ── FIX : scroll indicator derrière les boutons ── */
 .hero-scroll-indicator {
   position: absolute;
-  bottom: 32px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -397,6 +405,8 @@ button { cursor: pointer; font-family: var(--font-ui); }
   font-size: 0.65rem;
   letter-spacing: 0.25em;
   animation: heroFadeIn 0.9s ease 0.8s both;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .scroll-bar {
@@ -671,7 +681,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   background: var(--bg-card-hover);
 }
 
-/* Zone image carte */
 .mod-card-image {
   width: 100%;
   height: 220px;
@@ -725,7 +734,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   z-index: 5;
 }
 
-/* Corps carte */
 .mod-card-body { padding: 20px 22px; }
 
 .mod-category {
@@ -799,7 +807,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 
 .btn-see-more:hover { opacity: 0.7; }
 
-/* Pied de carte */
 .mod-footer {
   display: flex;
   align-items: flex-end;
@@ -998,7 +1005,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transform: scale(1) translateY(0);
 }
 
-/* Carousel détail */
 .detail-carousel {
   width: 100%;
   height: 320px;
@@ -1510,7 +1516,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
 
 .cart-item-remove:hover { color: var(--red); }
 
-/* Options par item */
 .cart-item-options {
   display: flex;
   flex-direction: column;
@@ -1550,7 +1555,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   margin-left: 2px;
 }
 
-/* Option globale CORE */
 .cart-global-option {
   padding: 10px 12px;
   background: rgba(0, 87, 184, 0.06);
@@ -1619,7 +1623,6 @@ button { cursor: pointer; font-family: var(--font-ui); }
   box-shadow: 0 6px 20px rgba(0, 87, 184, 0.4);
 }
 
-/* Bouton ajouter au panier */
 .btn-add-cart {
   display: flex;
   align-items: center;
@@ -1809,8 +1812,8 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: background 0.2s;
 }
 
-.order-modal-actions .btn-confirm:hover     { background: var(--blue-light); }
-.order-modal-actions .btn-confirm:disabled  { opacity: 0.5; cursor: not-allowed; }
+.order-modal-actions .btn-confirm:hover    { background: var(--blue-light); }
+.order-modal-actions .btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .order-success { text-align: center; padding: 20px 0; }
 .order-success .success-icon  { font-size: 3rem; margin-bottom: 14px; }
