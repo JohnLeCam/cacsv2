@@ -545,10 +545,31 @@ async function saveConfig() {
   showToast('Configuration sauvegardée !');
 }
 
-function toggleMaintenance() {
+async function toggleMaintenance() {
   document.getElementById('toggleMaintenance').classList.toggle('on');
   const isOn = isToggleOn('toggleMaintenance');
   updateMaintenanceStatus(isOn);
+
+  // Sauvegarde immédiate dans Supabase
+  await supabase_directSave('maintenance_mode', isOn ? 'true' : 'false');
+}
+
+async function supabase_directSave(key, value) {
+  try {
+    setSaveStatus('saving', 'Sauvegarde...');
+    await fetch('/api/admin/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site: { ...data.site, [key]: value }
+      })
+    });
+    data.site[key] = value;
+    setSaveStatus('saved', '✓ Sauvegardé');
+    setTimeout(() => setSaveStatus('', ''), 2000);
+  } catch (e) {
+    setSaveStatus('error', '✗ Erreur');
+  }
 }
 
 function updateMaintenanceStatus(isOn) {
