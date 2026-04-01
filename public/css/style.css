@@ -753,7 +753,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 /* Image / placeholder de la carte */
 .mod-card-image {
   width: 100%;
-  height: 180px;
+  height: 220px;
   background: var(--bg-2);
   position: relative;
   overflow: hidden;
@@ -780,7 +780,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
 }
 
 .mod-card:hover .mod-card-image > img {
-  transform: scale(1.05);
+  transform: scale(1.02);
 }
 
 .mod-placeholder {
@@ -1050,7 +1050,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
    ═══════════════════════════════════════════════════════════ */
 .mod-carousel {
   width: 100%;
-  height: 100%;
+  height: 220px;
   position: relative;
   overflow: hidden;
   background: var(--bg-2);
@@ -1076,7 +1076,7 @@ button { cursor: pointer; font-family: var(--font-ui); }
   transition: transform 0.4s ease;
 }
 
-.mod-card:hover .mod-carousel-slide img { transform: scale(1.04); }
+.mod-card:hover .mod-carousel-slide img { transform: scale(1.02); }
 
 .carousel-btn {
   position: absolute;
@@ -1839,4 +1839,29 @@ button { cursor: pointer; font-family: var(--font-ui); }
   font-family: var(--font-mono);
   font-style: normal;
   font-size: 0.78rem;
+}
+
+/* ── MOBILE ── */
+@media (max-width: 768px) {
+  .carousel-btn {
+    opacity: 1 !important;
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+  }
+  .mod-card-image {
+    height: 200px;
+  }
+  .mod-carousel {
+    height: 200px;
+  }
+  .detail-carousel {
+    height: 220px;
+  }
+  .cart-drawer {
+    width: 100vw;
+  }
+  .cart-item-options {
+    margin-left: 0;
+  }
 }
