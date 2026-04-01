@@ -158,6 +158,23 @@
     .color-preview-wrap{display:flex;align-items:center;gap:10px}.color-preview-wrap input[type="text"]{flex:1}
     input[type="color"]{width:36px;height:36px;padding:2px;border-radius:var(--r);cursor:pointer;flex-shrink:0}
 
+    #adminMaintenanceBanner {
+      display: none;
+      background: repeating-linear-gradient(-45deg, #7a0000 0px, #7a0000 10px, #c8102e 10px, #c8102e 20px);
+      color: #fff;
+      text-align: center;
+      padding: 10px 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      border-bottom: 2px solid rgba(255,255,255,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 200;
+    }
+
     /* Order status select */
     .order-status-select{background:var(--bg-2);border:1px solid var(--border-b);color:var(--white);padding:6px 10px;border-radius:var(--r);font-family:var(--font);font-size:0.8rem;cursor:pointer;outline:none;min-width:150px;transition:border-color var(--tr)}
     .order-status-select:focus{border-color:var(--blue)}
@@ -169,6 +186,9 @@
   <div id="loginScreen" style="display:none"></div>
 
   <div id="adminApp">
+    <div id="adminMaintenanceBanner">
+      ⚠️ &nbsp; SITE EN MAINTENANCE — Les visiteurs sont redirigés vers la page de maintenance &nbsp; ⚠️
+    </div>
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="sidebar-logo"><span>CAC'S</span> GTA V MODS</div>
