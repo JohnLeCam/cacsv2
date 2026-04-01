@@ -11,6 +11,13 @@ const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilde
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+app.use((req, res, next) => {
+  if (req.hostname === 'cacsgtavmods.fr') {
+    return res.redirect(301, 'https://www.cacsgtavmods.fr' + req.originalUrl);
+  }
+  next();
+});
+
 let config;
 try {
   config = require('./config/discord.config');
