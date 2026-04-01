@@ -610,4 +610,17 @@ app.listen(PORT, () => {
   console.log(`🌐  Site vitrine  →  http://localhost:${PORT}`);
   console.log(`⚙️   Panel Admin  →  http://localhost:${PORT}/admin`);
   console.log(`🗄️   Base de données → Supabase\n`);
+
+  // Nettoyage des sessions expirées — toutes les heures
+  setInterval(async () => {
+    try {
+      const { error, count } = await supabase
+        .from('sessions')
+        .delete()
+        .lt('expire', new Date().toISOString());
+      if (!error) console.log(`🧹 Sessions expirées nettoyées`);
+    } catch (e) {
+      console.warn('Erreur nettoyage sessions:', e.message);
+    }
+  }, 60 * 60 * 1000);
 });

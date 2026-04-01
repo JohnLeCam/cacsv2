@@ -33,26 +33,40 @@ async function loadAll() {
 
 // ─── Maintenance ─────────────────────────────────────────────
 async function checkMaintenanceBanner() {
-  try {
-    const res  = await fetch('/api/maintenance-status');
-    const data = await res.json();
-    if (data.maintenance && data.isStaff) showMaintenanceBanner();
-  } catch (e) {}
+  let lastMaintenanceState = null;
 
-  setInterval(async () => {
+  async function checkStatus() {
     try {
       const res  = await fetch('/api/maintenance-status');
       const data = await res.json();
-      if (data.maintenance && !data.isStaff)  { window.location.href = '/maintenance'; }
-      if (data.maintenance && data.isStaff && !document.getElementById('maintBannerBottom')) { showMaintenanceBanner(); }
-      if (!data.maintenance && document.getElementById('maintBannerBottom')) {
+
+      // Evite les actions inutiles si l'état n'a pas changé
+      if (lastMaintenanceState === data.maintenance) return;
+      lastMaintenanceState = data.maintenance;
+
+      if (data.maintenance && !data.isStaff) {
+        window.location.href = '/maintenance';
+        return;
+      }
+      if (data.maintenance && data.isStaff) {
+        showMaintenanceBanner();
+        return;
+      }
+      if (!data.maintenance) {
         document.getElementById('maintBannerTop')?.remove();
         document.getElementById('maintBannerBottom')?.remove();
         document.body.style.paddingTop    = '';
         document.body.style.paddingBottom = '';
       }
     } catch (e) {}
-  }, 5000);
+  }
+
+  // Vérification initiale
+  await checkStatus();
+
+  // Polling toutes les 30 secondes au lieu de 5 secondes
+  // = 120 requêtes/heure au lieu de 720
+  setInterval(checkStatus, 30000);
 }
 
 function showMaintenanceBanner() {
