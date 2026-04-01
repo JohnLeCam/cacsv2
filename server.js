@@ -602,6 +602,15 @@ app.get('/sitemap.xml', async (req, res) => {
   } catch (err) { res.status(500).send('Erreur génération sitemap'); }
 });
 
+app.get('/api/public', async (req, res) => {
+  const now = Date.now();
+  if (publicCache && (now - publicCacheTime) < CACHE_TTL) {
+    console.log('✅ Cache hit');
+    return res.json(publicCache);
+  }
+  console.log('❌ Cache miss — requête Supabase');
+  // ... reste du code
+
 // ── DÉMARRAGE ─────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log('\n╔══════════════════════════════════════════╗');
