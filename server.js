@@ -2,6 +2,8 @@ const express     = require('express');
 const session     = require('express-session');
 const fetch       = require('node-fetch');
 const path        = require('path');
+const helmet      = require('helmet');
+const rateLimit   = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 
@@ -113,8 +115,41 @@ async function updateDiscordEmbed(order, newStatus) {
 }
 
 // ── 1. BASE ───────────────────────────────────────────────────
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.set('trust proxy', 1);
+
+// ── SÉCURITÉ ──────────────────────────────────────────────────
+
+// Headers de sécurité (XSS, clickjacking, sniffing...)
+app.use(helmet({
+  contentSecurityPolicy: false, // désactivé car on charge des fonts Google + iframes YouTube
+  crossOriginEmbedderPolicy: false
+}));
+
+// Rate limiting global — 200 req/15min par IP
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes, réessaie dans quelques minutes.' }
+}));
+
+// Rate limiting strict sur les routes sensibles
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Trop de tentatives de connexion, réessaie dans 15 minutes.' }
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  message: { error: 'Trop de commandes envoyées, réessaie dans 10 minutes.' }
+});
+
+app.use('/auth/discord', authLimiter);
+app.use('/api/order',    orderLimiter);
 
 // ── 2. SESSION ────────────────────────────────────────────────
 const SupabaseSessionStore = require('express-session').Store;
@@ -147,8 +182,8 @@ app.use(session({
   saveUninitialized: false,
   rolling:           true,
   cookie: {
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure:   true,
+    sameSite: 'none',
     maxAge:   7 * 24 * 60 * 60 * 1000
   }
 }));
@@ -465,7 +500,15 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
 // ── 12. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
   const { items, totalPrice, discordUser } = req.body;
-  if (!items || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
+
+  // Validation des inputs
+  if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
+  if (items.length > 20) return res.status(400).json({ error: 'Trop d\'articles dans le panier.' });
+  if (typeof totalPrice !== 'number' || totalPrice < 0 || totalPrice > 10000) return res.status(400).json({ error: 'Prix invalide.' });
+  for (const item of items) {
+    if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' });
+    if (typeof item.price !== 'number' || item.price < 0) return res.status(400).json({ error: 'Prix article invalide.' });
+  }
   try {
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
