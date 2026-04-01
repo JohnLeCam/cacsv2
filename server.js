@@ -123,32 +123,20 @@ async function isMaintenanceMode() {
     const { data } = await supabase
       .from('site_config').select('value').eq('key', 'maintenance_mode').single();
     return data?.value === 'true';
-  } catch (e) {
-    return false;
-  }
+  } catch (e) { return false; }
 }
 
 app.get('/maintenance', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
 });
 
-// IMPORTANT : ce middleware doit être avant express.static
 app.use(async (req, res, next) => {
   const bypassPaths = [
-    '/maintenance',
-    '/auth/discord',
-    '/auth/discord/callback',
-    '/auth/logout',
-    '/api/user',
-    '/api/maintenance-status'
+    '/maintenance', '/auth/discord', '/auth/discord/callback',
+    '/auth/logout', '/api/user', '/api/maintenance-status'
   ];
-
-  // Laisser passer les assets (CSS, JS, images...)
   const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
-
-  if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) {
-    return next();
-  }
+  if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) return next();
 
   const maintenance = await isMaintenanceMode();
   if (!maintenance) return next();
@@ -163,10 +151,10 @@ app.use(async (req, res, next) => {
   return res.redirect('/maintenance');
 });
 
-// ── 4. STATIC — après le middleware maintenance ───────────────
+// ── 4. STATIC ─────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── 5. MAINTENANCE STATUS API ─────────────────────────────────
+// ── 5. MAINTENANCE STATUS ─────────────────────────────────────
 app.get('/api/maintenance-status', async (req, res) => {
   const maintenance = await isMaintenanceMode();
   const user    = req.session.user;
@@ -306,17 +294,11 @@ app.get('/auth/discord/callback', async (req, res) => {
         `https://discord.com/api/guilds/${config.GUILD_ID}/members/${userData.id}`,
         {
           method:  'PUT',
-          headers: {
-            Authorization: `Bot ${config.BOT_TOKEN || process.env.BOT_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ access_token: tokenData.access_token })
+          headers: { Authorization: `Bot ${config.BOT_TOKEN || process.env.BOT_TOKEN}`, 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ access_token: tokenData.access_token })
         }
       );
-      console.log(`✅ ${userData.username} ajouté/déjà dans le serveur Discord`);
-    } catch (e) {
-      console.warn('Impossible dajouter au serveur Discord:', e.message);
-    }
+    } catch (e) { console.warn('Impossible dajouter au serveur Discord:', e.message); }
 
     try {
       const memberRes  = await fetch(
@@ -325,9 +307,7 @@ app.get('/auth/discord/callback', async (req, res) => {
       );
       const memberData = await memberRes.json();
       memberRoles = memberData.roles || [];
-    } catch (e) {
-      console.warn('Impossible de récupérer les rôles Discord');
-    }
+    } catch (e) { console.warn('Impossible de récupérer les rôles Discord'); }
 
     req.session.user = {
       id:       userData.id,
@@ -395,16 +375,7 @@ app.get('/api/user', async (req, res) => {
       }
     }
     const isAdmin = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-    res.json({
-      connected: true,
-      id:        user.id,
-      username:  user.username,
-      avatar:    user.avatar,
-      discount:  bestDiscount,
-      roleName:  appliedRole,
-      roleColor,
-      isAdmin
-    });
+    res.json({ connected: true, id: user.id, username: user.username, avatar: user.avatar, discount: bestDiscount, roleName: appliedRole, roleColor, isAdmin });
   } catch (err) {
     console.error('Erreur /api/user:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -416,12 +387,8 @@ app.post('/api/admin/login', (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: "Connectez-vous d'abord via Discord." });
   const hasAdminRole = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-  if (hasAdminRole) {
-    req.session.isAdmin = true;
-    res.json({ success: true, username: user.username });
-  } else {
-    res.status(403).json({ error: "Vous n'avez pas le rôle requis." });
-  }
+  if (hasAdminRole) { req.session.isAdmin = true; res.json({ success: true, username: user.username }); }
+  else res.status(403).json({ error: "Vous n'avez pas le rôle requis." });
 });
 
 app.post('/api/admin/logout', (req, res) => {
@@ -444,6 +411,70 @@ app.get('/api/admin/data', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Erreur /api/admin/data:', err);
     res.status(500).json({ error: 'Erreur lecture base de données' });
+  }
+});
+
+// ── API STATS ─────────────────────────────────────────────────
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const totalOrders   = orders.length;
+    const totalRevenue  = orders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+
+    // Top mods
+    const modCounts = {};
+    for (const order of orders) {
+      const items = Array.isArray(order.items) ? order.items : [];
+      for (const item of items) {
+        if (!modCounts[item.name]) modCounts[item.name] = { count: 0, revenue: 0 };
+        modCounts[item.name].count++;
+        modCounts[item.name].revenue += (parseFloat(item.price) || 0) * (item.quantity || 1);
+      }
+    }
+
+    const topMods = Object.entries(modCounts)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Commandes par jour (7 derniers jours)
+    const last7 = {};
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      last7[d.toISOString().slice(0, 10)] = 0;
+    }
+    for (const order of orders) {
+      const day = order.created_at?.slice(0, 10);
+      if (day && last7[day] !== undefined) last7[day]++;
+    }
+
+    res.json({
+      totalOrders,
+      totalRevenue,
+      topMods,
+      last7Days:     Object.entries(last7).map(([date, count]) => ({ date, count })),
+      recentOrders:  orders.slice(0, 10)
+    });
+  } catch (err) {
+    console.error('Erreur /api/admin/stats:', err);
+    res.status(500).json({ error: 'Erreur lecture stats' });
+  }
+});
+
+app.delete('/api/admin/stats/reset', requireAdmin, async (req, res) => {
+  try {
+    await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erreur reset stats:', err);
+    res.status(500).json({ error: 'Erreur reset stats' });
   }
 });
 
@@ -474,19 +505,13 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       if (toDelete.length > 0) await supabase.from('mods').delete().in('id', toDelete);
       for (const mod of d.mods) {
         const { error: upsertError } = await supabase.from('mods').upsert({
-          id:          mod.id,
-          name:        mod.name,
-          category:    mod.category,
-          description: mod.description || '',
-          image:       mod.image       || '',
-          base_price:  mod.basePrice   || 0,
-          images:      mod.images      || [],
-          featured:    mod.featured    || false,
-          visible:     mod.visible     !== false,
-          position:    mod.position    ?? 0
+          id: mod.id, name: mod.name, category: mod.category,
+          description: mod.description || '', image: mod.image || '',
+          base_price: mod.basePrice || 0, images: mod.images || [],
+          featured: mod.featured || false, visible: mod.visible !== false,
+          position: mod.position ?? 0
         }, { onConflict: 'id' });
         if (upsertError) console.error('❌ Erreur upsert mod:', upsertError.message);
-        else console.log('✅ Mod sauvegardé:', mod.name);
       }
     }
     if (d.promotions) {
@@ -495,14 +520,10 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       if (toDeletePromos.length > 0) await supabase.from('promotions').delete().in('id', toDeletePromos);
       for (const promo of d.promotions) {
         await supabase.from('promotions').upsert({
-          id:                  promo.id,
-          name:                promo.name,
-          description:         promo.description       || '',
-          discount_percent:    promo.discountPercent   || 0,
-          end_date:            promo.endDate,
+          id: promo.id, name: promo.name, description: promo.description || '',
+          discount_percent: promo.discountPercent || 0, end_date: promo.endDate,
           apply_to_categories: promo.applyToCategories || [],
-          active:              promo.active !== false,
-          color:               promo.color  || '#cc0000'
+          active: promo.active !== false, color: promo.color || '#cc0000'
         }, { onConflict: 'id' });
       }
     }
@@ -512,14 +533,12 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       if (toDeleteRoles.length > 0) await supabase.from('discord_roles').delete().in('role_id', toDeleteRoles);
       for (const role of d.discordRoles) {
         await supabase.from('discord_roles').upsert({
-          role_id:   role.roleId,
-          role_name: role.roleName,
-          discount:  role.discount || 0,
-          color:     role.color    || '#ffffff'
+          role_id: role.roleId, role_name: role.roleName,
+          discount: role.discount || 0, color: role.color || '#ffffff'
         }, { onConflict: 'role_id' });
       }
     }
-    res.json({ success: true, message: 'Données sauvegardées dans Supabase !' });
+    res.json({ success: true });
   } catch (err) {
     console.error('Erreur /api/admin/save:', err);
     res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message });
@@ -529,9 +548,8 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
 // ── 12. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
   const { items, totalPrice, discordUser } = req.body;
-  if (!items || items.length === 0) {
-    return res.status(400).json({ error: 'Panier vide.' });
-  }
+  if (!items || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
+
   try {
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
@@ -551,24 +569,22 @@ app.post('/api/order', async (req, res) => {
 
     if (member) {
       permissionOverwrites.push({
-        id:    member.id,
+        id: member.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
       });
     }
 
     for (const roleId of STAFF_ROLE_IDS) {
       permissionOverwrites.push({
-        id:    roleId,
+        id: roleId,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages]
       });
     }
 
     const channel = await guild.channels.create({
-      name:                 ticketName,
-      type:                 ChannelType.GuildText,
-      parent:               TICKET_CAT_ID,
-      permissionOverwrites,
-      topic:                `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}`,
+      name: ticketName, type: ChannelType.GuildText,
+      parent: TICKET_CAT_ID, permissionOverwrites,
+      topic: `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}`,
     });
 
     const coreOption    = req.body.coreOption || false;
@@ -589,23 +605,31 @@ app.post('/api/order', async (req, res) => {
 
     await channel.send([
       `# 🛒 Nouvelle commande — ${new Date().toLocaleDateString('fr-FR')}`,
-      ``,
-      `**Client :** ${clientMention}`,
-      `**Total :** **${formatPrice(totalPrice)}**`,
-      ``,
-      `## 📦 Articles commandés`,
-      itemLines + coreLines,
-      ``,
-      `## 👷 Staff notifié`,
-      staffMentions,
-      ``,
-      `---`,
+      ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(totalPrice)}**`,
+      ``, `## 📦 Articles commandés`, itemLines + coreLines,
+      ``, `## 👷 Staff notifié`, staffMentions,
+      ``, `---`,
       `*Un membre du staff va vous contacter sous peu.*`,
       `*Pour fermer ce ticket : tapez* \`!close\``,
     ].join('\n'));
 
+    // ── Sauvegarder la commande dans Supabase ─────────────────
+    try {
+      await supabase.from('orders').insert({
+        discord_username: username,
+        discord_id:       discordUser?.id || null,
+        ticket_channel:   ticketName,
+        total_price:      totalPrice,
+        items:            items,
+        core_option:      coreOption
+      });
+    } catch (e) {
+      console.warn('Avertissement: impossible de sauvegarder la commande dans Supabase:', e.message);
+    }
+
     console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
+
   } catch (err) {
     console.error('Erreur création ticket:', err);
     res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message });
