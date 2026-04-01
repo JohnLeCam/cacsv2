@@ -109,6 +109,7 @@ async function loadOrders() {
             <option value="delivered"  ${status==='delivered'  ? 'selected' : ''}>🟢 Livré</option>
             <option value="cancelled"  ${status==='cancelled'  ? 'selected' : ''}>🔴 Annulé</option>
           </select>
+          <button onclick="deleteOrder('${order.id}', this)" title="Supprimer" style="background:transparent;border:1px solid rgba(217,0,0,0.3);color:var(--red);width:32px;height:32px;border-radius:var(--r);cursor:pointer;font-size:0.85rem;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.background='rgba(217,0,0,0.15)'" onmouseout="this.style.background='transparent'">🗑️</button>
         </div>`;
     }).join('');
 
@@ -151,6 +152,18 @@ async function changeOrderStatus(orderId, selectEl) {
     } else { showToast('Erreur mise à jour statut', true); selectEl.value = row.dataset.status; }
   } catch (e) { showToast('Erreur serveur', true); }
   finally { selectEl.disabled = false; }
+}
+
+async function deleteOrder(orderId, btn) {
+  if (!confirm('Supprimer définitivement cette commande ?')) return;
+  try {
+    btn.disabled = true;
+    const res = await fetch(`/api/admin/orders/${orderId}`, { method: 'DELETE' });
+    if (res.ok) {
+      btn.closest('.order-row').remove();
+      showToast('Commande supprimée');
+    } else { showToast('Erreur suppression', true); btn.disabled = false; }
+  } catch (e) { showToast('Erreur serveur', true); btn.disabled = false; }
 }
 
 // ─── STATS ───────────────────────────────────────────────────

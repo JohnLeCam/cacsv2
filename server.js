@@ -412,6 +412,16 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur lecture stats' }); }
 });
 
+app.delete('/api/admin/orders/:id', requireAdmin, async (req, res) => {
+  try {
+    await supabase.from('orders').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erreur suppression commande:', err);
+    res.status(500).json({ error: 'Erreur suppression commande' });
+  }
+});
+
 app.delete('/api/admin/stats/reset', requireAdmin, async (req, res) => {
   try { await supabase.from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000'); res.json({ success: true }); }
   catch (err) { res.status(500).json({ error: 'Erreur reset stats' }); }
@@ -525,10 +535,6 @@ app.get('/sitemap.xml', async (req, res) => {
     res.header('Content-Type', 'application/xml');
     res.send(xml);
   } catch (err) { res.status(500).send('Erreur génération sitemap'); }
-});
-
-app.get('/cgvu', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'cgvu.html'));
 });
 
 // ── DÉMARRAGE ─────────────────────────────────────────────────
