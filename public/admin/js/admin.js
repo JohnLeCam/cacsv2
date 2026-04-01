@@ -63,32 +63,65 @@ function renderDashboard() {
 const STATUS_LABELS = { pending:'🟡 En attente', processing:'🔵 En cours', delivered:'🟢 Livré', cancelled:'🔴 Annulé' };
 const STATUS_COLORS = { pending:'#f59e0b', processing:'#3b82f6', delivered:'#22c55e', cancelled:'#ef4444' };
 
-const ordersHTML = orders.map(order => {
-  const date    = new Date(order.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
-  const items   = Array.isArray(order.items) ? order.items : [];
-  const status  = order.status || 'pending';
-  const color   = STATUS_COLORS[status] || '#666';
-  const label   = STATUS_LABELS[status]  || '🟡 En attente';
-  const itemNames = items.map(i => i.name).join(', ');
+async function loadOrders() {
+  const container = document.getElementById('ordersContent');
+  if (!container) return;
+  container.innerHTML = `<div style="color:var(--grey-m);font-size:0.9rem;padding:20px 0">Chargement des commandes...</div>`;
+  try {
+    const res    = await fetch('/api/admin/orders');
+    const orders = await res.json();
 
-  return `
-    <div class="item-row order-row" data-status="${status}" style="flex-wrap:nowrap;gap:12px">
-      <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:0.92rem;font-weight:700;color:var(--white)">${esc(order.discord_username || 'Visiteur')}</div>
-        <div style="font-size:0.75rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">${date} · #${esc(order.ticket_channel || '')}</div>
-        <div style="font-size:0.78rem;color:var(--grey-l);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(itemNames)}</div>
-      </div>
-      <span style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);flex-shrink:0;white-space:nowrap">${formatEUR(order.total_price)}</span>
-      <span class="item-badge" style="color:${color};border-color:${color}40;background:${color}12;font-family:var(--mono);font-size:0.68rem;flex-shrink:0;white-space:nowrap">${label}</span>
-      <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
-        <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
-        <option value="processing" ${status==='processing' ? 'selected' : ''}>🔵 En cours</option>
-        <option value="delivered"  ${status==='delivered'  ? 'selected' : ''}>🟢 Livré</option>
-        <option value="cancelled"  ${status==='cancelled'  ? 'selected' : ''}>🔴 Annulé</option>
-      </select>
-    </div>`;
-}).join('');
+    if (orders.length === 0) {
+      container.innerHTML = `<div class="card"><div class="card-body"><p style="color:var(--grey-m)">Aucune commande enregistrée.</p></div></div>`;
+      return;
+    }
+
+    // Filtres statut
+    const filterBtns = ['all','pending','processing','delivered','cancelled'].map(s => {
+      const count = s === 'all' ? orders.length : orders.filter(o => o.status === s).length;
+      const label = s === 'all' ? 'Toutes' : STATUS_LABELS[s];
+      return `<button class="btn ${s === 'all' ? 'btn-red' : 'btn-ghost'} btn-sm order-filter-btn" data-status="${s}" onclick="filterOrders('${s}',this)">${label} <span style="font-family:var(--mono);font-size:0.7rem">(${count})</span></button>`;
+    }).join('');
+
+    const ordersHTML = orders.map(order => {
+      const date      = new Date(order.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      const items     = Array.isArray(order.items) ? order.items : [];
+      const status    = order.status || 'pending';
+      const color     = STATUS_COLORS[status] || '#666';
+      const label     = STATUS_LABELS[status]  || '🟡 En attente';
+      const itemNames = items.map(i => i.name).join(', ');
+
+      return `
+        <div class="item-row order-row" data-status="${status}" style="flex-wrap:nowrap;gap:12px;align-items:center">
+          <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.92rem;font-weight:700;color:var(--white)">${esc(order.discord_username || 'Visiteur')}</div>
+            <div style="font-size:0.75rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">${date} · #${esc(order.ticket_channel || '')}</div>
+            <div style="font-size:0.78rem;color:var(--grey-l);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px">${esc(itemNames)}</div>
+          </div>
+          <span style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);flex-shrink:0;white-space:nowrap">${formatEUR(order.total_price)}</span>
+          <span class="item-badge" style="color:${color};border-color:${color}40;background:${color}12;font-family:var(--mono);font-size:0.68rem;flex-shrink:0;white-space:nowrap">${label}</span>
+          <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
+            <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
+            <option value="processing" ${status==='processing' ? 'selected' : ''}>🔵 En cours</option>
+            <option value="delivered"  ${status==='delivered'  ? 'selected' : ''}>🟢 Livré</option>
+            <option value="cancelled"  ${status==='cancelled'  ? 'selected' : ''}>🔴 Annulé</option>
+          </select>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">${filterBtns}</div>
+      <div class="card">
+        <div class="card-body" style="padding:12px">
+          <div class="items-list" id="ordersList">${ordersHTML}</div>
+        </div>
+      </div>`;
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--red);font-size:0.9rem">Erreur chargement des commandes.</div>`;
+    console.error(err);
+  }
+}
 
 function filterOrders(status, btn) {
   document.querySelectorAll('.order-filter-btn').forEach(b => { b.classList.remove('btn-red'); b.classList.add('btn-ghost'); });
