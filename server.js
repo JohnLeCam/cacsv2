@@ -36,8 +36,9 @@ const TICKET_CAT_ID  = config.TICKET_CAT_ID  || process.env.TICKET_CAT_ID  || '1
 const STAFF_ROLE_IDS = config.STAFF_ROLE_IDS || ['1412494453763211385','1412494594117206141','1439750620788822181'];
 
 const STATUS_CONFIG = {
-  pending:    { label: 'En attente',  emoji: '🟡', color: 0xf59e0b },
+  pending:    { label: 'En attente', emoji: '🟡', color: 0xf59e0b },
   processing: { label: 'En cours',   emoji: '🔵', color: 0x3b82f6 },
+  paid:       { label: 'Payé',       emoji: '💳', color: 0xa855f7 },
   delivered:  { label: 'Livré',      emoji: '🟢', color: 0x22c55e },
   cancelled:  { label: 'Annulé',     emoji: '🔴', color: 0xef4444 },
 };

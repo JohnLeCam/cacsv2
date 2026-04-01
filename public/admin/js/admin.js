@@ -60,8 +60,8 @@ function renderDashboard() {
 }
 
 // ─── COMMANDES ───────────────────────────────────────────────
-const STATUS_LABELS = { pending:'🟡 En attente', processing:'🔵 En cours', delivered:'🟢 Livré', cancelled:'🔴 Annulé' };
-const STATUS_COLORS = { pending:'#f59e0b', processing:'#3b82f6', delivered:'#22c55e', cancelled:'#ef4444' };
+const STATUS_LABELS = { pending:'🟡 En attente', processing:'🔵 En cours', paid:'💳 Payé', delivered:'🟢 Livré', cancelled:'🔴 Annulé' };
+const STATUS_COLORS = { pending:'#f59e0b', processing:'#3b82f6', paid:'#a855f7', delivered:'#22c55e', cancelled:'#ef4444' };
 
 async function loadOrders() {
   const container = document.getElementById('ordersContent');
@@ -105,6 +105,7 @@ async function loadOrders() {
           <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
             <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
             <option value="processing" ${status==='processing' ? 'selected' : ''}>🔵 En cours</option>
+            <option value="paid"       ${status==='paid'       ? 'selected' : ''}>💳 Payé</option>
             <option value="delivered"  ${status==='delivered'  ? 'selected' : ''}>🟢 Livré</option>
             <option value="cancelled"  ${status==='cancelled'  ? 'selected' : ''}>🔴 Annulé</option>
           </select>
