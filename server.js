@@ -224,7 +224,8 @@ function formatData(site, categories, mods, promotions, discordRoles) {
       basePrice:   parseFloat(m.base_price),
       featured:    m.featured,
       visible:     m.visible,
-      position:    m.position
+      position:    m.position,
+      createdAt:   m.created_at || null
     })),
     promotions: promotions.map(p => ({
       id:                p.id,

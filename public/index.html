@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- ═══ SEO — Titre & Description ═══ -->
   <title>Cac's GTA V Mods — Mods FiveM de qualité | Véhicules, Scripts, EUP</title>
   <meta name="description" content="Cac's GTA V Mods : mods FiveM de qualité pour serveurs RP français. Véhicules police, pompiers, gendarmerie, SAMU, scripts et EUP. Achat via Discord.">
   <meta name="keywords" content="mods FiveM, GTA V mods, véhicules FiveM, scripts FiveM, EUP FiveM, mods police FiveM, mods pompiers FiveM, mods gendarmerie FiveM, serveur RP FiveM, FiveM france, mods RP français">
@@ -12,7 +11,6 @@
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://cacs-gtavmods.fr/">
 
-  <!-- ═══ Open Graph (Facebook, Discord, réseaux) ═══ -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://cacs-gtavmods.fr/">
   <meta property="og:title"       content="Cac's GTA V Mods — Mods FiveM de qualité">
@@ -23,59 +21,181 @@
   <meta property="og:site_name"   content="Cac's GTA V Mods">
   <meta property="og:locale"      content="fr_FR">
 
-  <!-- ═══ Twitter Card ═══ -->
   <meta name="twitter:card"        content="summary_large_image">
   <meta name="twitter:title"       content="Cac's GTA V Mods — Mods FiveM de qualité">
   <meta name="twitter:description" content="Mods FiveM de qualité pour serveurs RP français. Véhicules, Scripts, EUP. Achat via Discord.">
   <meta name="twitter:image"       content="https://cacs-gtavmods.fr/og-image.png">
 
-  <!-- ═══ Favicon ═══ -->
   <link rel="icon"             type="image/png" href="/logo.png">
   <link rel="apple-touch-icon" href="/logo.png">
 
-  <!-- ═══ Données structurées (Google) ═══ -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "Store",
     "name": "Cac's GTA V Mods",
-    "description": "Mods FiveM de qualité pour serveurs RP français. Véhicules police, pompiers, gendarmerie, SAMU, scripts et EUP.",
+    "description": "Mods FiveM de qualité pour serveurs RP français.",
     "url": "https://cacs-gtavmods.fr",
     "logo": "https://cacs-gtavmods.fr/logo.png",
     "image": "https://cacs-gtavmods.fr/og-image.png",
     "priceRange": "€€",
     "currenciesAccepted": "EUR",
-    "paymentAccepted": "Discord",
-    "inLanguage": "fr",
-    "sameAs": []
+    "inLanguage": "fr"
   }
   </script>
 
-  <!-- ═══ Fonts Google ═══ -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Rajdhani:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    /* ── Barre de recherche & tri ── */
+    .catalogue-controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .search-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 220px;
+    }
+
+    .search-wrap svg {
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--grey-mid);
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      color: var(--white);
+      padding: 10px 14px 10px 42px;
+      border-radius: var(--radius);
+      font-family: var(--font-ui);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+
+    .search-input::placeholder { color: var(--grey-mid); }
+    .search-input:focus { border-color: var(--blue-light); }
+
+    .search-clear {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--grey-mid);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0;
+      display: none;
+      transition: color var(--transition);
+    }
+
+    .search-clear:hover { color: var(--red); }
+    .search-clear.visible { display: block; }
+
+    .sort-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      color: var(--white);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-family: var(--font-ui);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      outline: none;
+      cursor: pointer;
+      transition: border-color var(--transition);
+      min-width: 200px;
+    }
+
+    .sort-select:focus { border-color: var(--blue-light); }
+    .sort-select option { background: var(--bg-2); }
+
+    .catalogue-results {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--grey-mid);
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+      padding: 4px 0;
+    }
+
+    /* Badge NOUVEAU */
+    .mod-new-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: var(--blue);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 500;
+      letter-spacing: 0.2em;
+      padding: 3px 8px;
+      border-radius: 2px;
+      text-transform: uppercase;
+      z-index: 5;
+      animation: newPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes newPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,87,184,0.4); }
+      50%       { box-shadow: 0 0 8px 3px rgba(0,87,184,0.2); }
+    }
+
+    /* Compteur catégorie */
+    .cat-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.1);
+      color: var(--grey-light);
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-left: 6px;
+      min-width: 18px;
+    }
+
+    .filter-btn.active .cat-count {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+  </style>
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════════ NAVBAR ═══ -->
+  <!-- NAVBAR -->
   <nav class="navbar" id="navbar">
     <div class="nav-container">
-
       <a href="#" class="nav-logo">
         <img src="/logo.png" alt="Logo Cac's GTA V Mods" style="width:38px;height:38px;border-radius:50%;border:1.5px solid rgba(0,87,184,0.4);box-shadow:0 0 10px rgba(0,87,184,0.2);object-fit:cover;flex-shrink:0">
         <span style="display:flex;flex-direction:column;line-height:1">
           <span style="font-family:'Bebas Neue',sans-serif;font-size:1.25rem;letter-spacing:0.1em"><span class="logo-red">CAC'S</span> GTA V MODS</span>
         </span>
       </a>
-
       <div class="nav-links">
         <a href="#catalogue" class="nav-link">Catalogue</a>
         <a href="#discord-section" class="nav-link">Discord</a>
       </div>
-
       <button class="cart-nav-btn" id="cartNavBtn" onclick="toggleCart()" title="Mon panier">
         🛒 <span class="cart-count" id="cartCount">0</span>
       </button>
@@ -87,18 +207,16 @@
           Connexion Discord
         </button>
       </div>
-
     </div>
   </nav>
 
-  <!-- ═════════════════════════════════════════ HERO ═══ -->
+  <!-- HERO -->
   <section class="hero" id="home">
     <div class="hero-bg">
       <div class="scanlines"></div>
       <div class="grid-overlay"></div>
       <div class="vignette"></div>
     </div>
-
     <div class="hero-content">
       <img src="/logo.png" alt="Cac's GTA V Mods" style="width:80px;height:80px;border-radius:50%;margin:0 auto 20px;display:block;border:2px solid rgba(0,87,184,0.35);box-shadow:0 0 24px rgba(0,87,184,0.2),0 0 48px rgba(200,16,46,0.1);object-fit:cover;animation:heroFadeIn 0.9s ease 0.05s both">
       <div class="hero-badge" id="heroBadge">CAC'S GTA V MODS</div>
@@ -113,26 +231,25 @@
         <a href="#discord-section" class="btn-outline" id="heroDiscordBtn">REJOINDRE LE DISCORD</a>
       </div>
     </div>
-
     <div class="hero-scroll-indicator">
       <span>SCROLL</span>
       <div class="scroll-bar"></div>
     </div>
   </section>
 
-  <!-- ══════════════════════════════════ ANNOUNCEMENT ═══ -->
+  <!-- ANNOUNCEMENT -->
   <div class="announcement" id="announcement" style="display:none">
     <span class="announce-icon">📢</span>
     <span id="announceText"></span>
     <button onclick="this.parentElement.style.display='none'">✕</button>
   </div>
 
-  <!-- ══════════════════════════════ BANDEAU PROMOS ═══ -->
+  <!-- BANDEAU PROMOS -->
   <div class="promo-banner" id="promoBanner" style="display:none">
     <div class="promo-banner-track" id="promoBannerTrack"></div>
   </div>
 
-  <!-- ═══════════════════════════════════ CATALOGUE ═══ -->
+  <!-- CATALOGUE -->
   <section class="section catalogue-section" id="catalogue">
     <div class="container">
       <div class="section-header">
@@ -141,15 +258,42 @@
         <p class="section-desc">Tous nos mods FiveM. Connecte-toi avec Discord pour voir tes prix personnalisés.</p>
       </div>
 
+      <!-- Filtres catégories -->
       <div class="category-filters" id="categoryFilters">
-        <button class="filter-btn active" data-cat="all">Tout voir</button>
+        <button class="filter-btn active" data-cat="all" onclick="setFilter('all')">Tout voir</button>
       </div>
 
+      <!-- Barre de recherche + tri -->
+      <div class="catalogue-controls">
+        <div class="search-wrap">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input
+            type="text"
+            class="search-input"
+            id="searchInput"
+            placeholder="Rechercher un mod..."
+            oninput="onSearchInput()"
+            autocomplete="off"
+          >
+          <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+        </div>
+        <select class="sort-select" id="sortSelect" onchange="renderMods()">
+          <option value="default">Ordre par défaut</option>
+          <option value="price-asc">Prix croissant</option>
+          <option value="price-desc">Prix décroissant</option>
+          <option value="newest">Nouveautés d'abord</option>
+          <option value="featured">Vedettes d'abord</option>
+          <option value="name-asc">A → Z</option>
+        </select>
+        <span class="catalogue-results" id="catalogueResults"></span>
+      </div>
+
+      <!-- Grille des mods -->
       <div class="mods-grid" id="modsGrid"></div>
     </div>
   </section>
 
-  <!-- ══════════════════════════════════════ DISCORD ═══ -->
+  <!-- DISCORD -->
   <section class="section discord-cta-section" id="discord-section">
     <div class="container">
       <div class="discord-card">
@@ -174,7 +318,7 @@
     </div>
   </section>
 
-  <!-- ════════════════════════════════════════ FOOTER ═══ -->
+  <!-- FOOTER -->
   <footer class="footer">
     <div class="container">
       <div class="footer-content">
@@ -197,7 +341,7 @@
     </div>
   </footer>
 
-  <!-- ═══════════════════════════════ MODAL DÉTAIL MOD ═══ -->
+  <!-- MODAL DÉTAIL MOD -->
   <div class="mod-detail-overlay" id="modDetailOverlay" onclick="if(event.target===this)closeModDetail()">
     <div class="mod-detail-modal" id="modDetailModal"></div>
   </div>
