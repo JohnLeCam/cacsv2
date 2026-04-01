@@ -438,13 +438,15 @@ async function toggleMaintenance() {
 }
 
 function updateMaintenanceStatus(isOn) {
-  const el     = document.getElementById('maintenanceStatus');
-  const banner = document.getElementById('adminMaintenanceBanner');
+  const el      = document.getElementById('maintenanceStatus');
+  const banner  = document.getElementById('adminMaintenanceBanner');
+  const content = document.querySelector('.main-content');
   if (el) {
     el.textContent = isOn ? '🔴 MAINTENANCE ACTIVE' : '🟢 Site accessible';
     el.style.color = isOn ? '#c8102e' : '#4ade80';
   }
   if (banner) banner.style.display = isOn ? 'block' : 'none';
+  if (content) content.style.paddingTop = isOn ? '38px' : '';
 }
 
 // ─── PARAMÈTRES ──────────────────────────────────────────────
