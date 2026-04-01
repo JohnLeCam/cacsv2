@@ -133,7 +133,7 @@ app.get('/maintenance', (req, res) => {
 app.use(async (req, res, next) => {
   const bypassPaths = [
     '/maintenance', '/auth/discord', '/auth/discord/callback',
-    '/auth/logout', '/api/user', '/api/maintenance-status'
+    '/auth/logout', '/api/user', '/api/maintenance-status', '/sitemap.xml', '/robots.txt'
   ];
   const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
   if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) return next();
@@ -418,16 +418,13 @@ app.get('/api/admin/data', requireAdmin, async (req, res) => {
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     const { data: orders, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
+      .from('orders').select('*').order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    const totalOrders   = orders.length;
-    const totalRevenue  = orders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+    const totalOrders  = orders.length;
+    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
 
-    // Top mods
     const modCounts = {};
     for (const order of orders) {
       const items = Array.isArray(order.items) ? order.items : [];
@@ -443,12 +440,7 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    // Stats options
-    let totalDebadgage = 0;
-    let totalRetexture = 0;
-    let totalCore      = 0;
-    let totalItems     = 0;
-
+    let totalDebadgage = 0, totalRetexture = 0, totalCore = 0, totalItems = 0;
     for (const order of orders) {
       if (order.core_option) totalCore++;
       const items = Array.isArray(order.items) ? order.items : [];
@@ -459,11 +451,10 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
       }
     }
 
-    const pctDebadgage = totalItems   > 0 ? Math.round((totalDebadgage / totalItems)   * 100) : 0;
-    const pctRetexture = totalItems   > 0 ? Math.round((totalRetexture / totalItems)   * 100) : 0;
-    const pctCore      = totalOrders  > 0 ? Math.round((totalCore      / totalOrders)  * 100) : 0;
+    const pctDebadgage = totalItems  > 0 ? Math.round((totalDebadgage / totalItems)  * 100) : 0;
+    const pctRetexture = totalItems  > 0 ? Math.round((totalRetexture / totalItems)  * 100) : 0;
+    const pctCore      = totalOrders > 0 ? Math.round((totalCore      / totalOrders) * 100) : 0;
 
-    // Commandes par jour (7 derniers jours)
     const last7 = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
@@ -476,12 +467,8 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     }
 
     res.json({
-      totalOrders,
-      totalRevenue,
-      topMods,
-      pctDebadgage,
-      pctRetexture,
-      pctCore,
+      totalOrders, totalRevenue, topMods,
+      pctDebadgage, pctRetexture, pctCore,
       last7Days:    Object.entries(last7).map(([date, count]) => ({ date, count })),
       recentOrders: orders.slice(0, 10)
     });
@@ -610,8 +597,8 @@ app.post('/api/order', async (req, res) => {
       topic: `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}`,
     });
 
-    const coreOption    = req.body.coreOption || false;
-    const itemLines     = items.map(item => {
+    const coreOption = req.body.coreOption || false;
+    const itemLines  = items.map(item => {
       const opts   = item.options || {};
       const extra  = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
       const total  = (item.price + extra) * item.quantity;
@@ -636,7 +623,6 @@ app.post('/api/order', async (req, res) => {
       `*Pour fermer ce ticket : tapez* \`!close\``,
     ].join('\n'));
 
-    // ── Sauvegarder la commande dans Supabase ─────────────────
     try {
       await supabase.from('orders').insert({
         discord_username: username,
@@ -647,7 +633,7 @@ app.post('/api/order', async (req, res) => {
         core_option:      coreOption
       });
     } catch (e) {
-      console.warn('Avertissement: impossible de sauvegarder la commande dans Supabase:', e.message);
+      console.warn('Avertissement: impossible de sauvegarder la commande:', e.message);
     }
 
     console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
@@ -656,6 +642,37 @@ app.post('/api/order', async (req, res) => {
   } catch (err) {
     console.error('Erreur création ticket:', err);
     res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message });
+  }
+});
+
+// ── 13. SITEMAP DYNAMIQUE ─────────────────────────────────────
+app.get('/sitemap.xml', async (req, res) => {
+  try {
+    const mods  = await getMods(true);
+    const today = new Date().toISOString().slice(0, 10);
+
+    const modUrls = mods.map(m => `
+  <url>
+    <loc>https://cacs-gtavmods.fr/#${encodeURIComponent(m.id)}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>`).join('');
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://cacs-gtavmods.fr/</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>${modUrls}
+</urlset>`;
+
+    res.header('Content-Type', 'application/xml');
+    res.send(xml);
+  } catch (err) {
+    res.status(500).send('Erreur génération sitemap');
   }
 });
 
