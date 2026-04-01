@@ -364,10 +364,8 @@ app.get('/api/public', async (req, res) => {
   try {
     const now = Date.now();
     if (publicCache && (now - publicCacheTime) < CACHE_TTL) {
-      console.log(`✅ Cache hit — ${Math.round((now - publicCacheTime) / 1000)}s depuis le dernier chargement`);
       return res.json(publicCache);
     }
-    console.log('❌ Cache miss — requête Supabase');
     const [site, categories, mods, promotions, discordRoles] = await Promise.all([getSiteConfig(), getCategories(), getMods(true), getPromotions(true), getDiscordRoles()]);
     publicCache     = formatData(site, categories, mods, promotions, discordRoles);
     publicCacheTime = now;
