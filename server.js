@@ -53,12 +53,10 @@ discordBot.on('messageCreate', async (message) => {
   if (message.content === '!close' && message.channel.name?.startsWith('ticket-')) {
     const member  = message.member;
     const isStaff = STAFF_ROLE_IDS.some(roleId => member?.roles.cache.has(roleId));
-
     if (!isStaff) {
       await message.reply('❌ Seul un membre du staff peut fermer ce ticket.');
       return;
     }
-
     await message.channel.send('🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
     setTimeout(() => message.channel.delete().catch(() => {}), 5000);
   }
@@ -68,9 +66,8 @@ discordBot.login(BOT_TOKEN).catch(err => {
   console.error('❌ Erreur connexion bot Discord:', err.message);
 });
 
-// ── 1. MIDDLEWARES DE BASE ────────────────────────────────────
+// ── 1. BASE ───────────────────────────────────────────────────
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 app.set('trust proxy', 1);
 
 // ── 2. SESSION ────────────────────────────────────────────────
@@ -120,24 +117,38 @@ app.use(session({
   }
 }));
 
-// ── 3. MAINTENANCE ───────────────────────────────────────────
+// ── 3. MAINTENANCE ────────────────────────────────────────────
 async function isMaintenanceMode() {
-  const { data } = await supabase
-    .from('site_config').select('value').eq('key', 'maintenance_mode').single();
-  return data?.value === 'true';
+  try {
+    const { data } = await supabase
+      .from('site_config').select('value').eq('key', 'maintenance_mode').single();
+    return data?.value === 'true';
+  } catch (e) {
+    return false;
+  }
 }
 
 app.get('/maintenance', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
 });
 
+// IMPORTANT : ce middleware doit être avant express.static
 app.use(async (req, res, next) => {
-  const bypass = [
-    '/maintenance', '/auth/discord', '/auth/discord/callback',
-    '/auth/logout', '/api/user', '/api/maintenance-status'
+  const bypassPaths = [
+    '/maintenance',
+    '/auth/discord',
+    '/auth/discord/callback',
+    '/auth/logout',
+    '/api/user',
+    '/api/maintenance-status'
   ];
-  const isAsset = req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.includes('.');
-  if (bypass.some(p => req.path.startsWith(p)) || isAsset) return next();
+
+  // Laisser passer les assets (CSS, JS, images...)
+  const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
+
+  if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) {
+    return next();
+  }
 
   const maintenance = await isMaintenanceMode();
   if (!maintenance) return next();
@@ -152,6 +163,10 @@ app.use(async (req, res, next) => {
   return res.redirect('/maintenance');
 });
 
+// ── 4. STATIC — après le middleware maintenance ───────────────
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ── 5. MAINTENANCE STATUS API ─────────────────────────────────
 app.get('/api/maintenance-status', async (req, res) => {
   const maintenance = await isMaintenanceMode();
   const user    = req.session.user;
@@ -160,7 +175,7 @@ app.get('/api/maintenance-status', async (req, res) => {
   res.json({ maintenance, isStaff: !!(isStaff || isAdmin) });
 });
 
-// ── 4. HELPERS SUPABASE ───────────────────────────────────────
+// ── 6. HELPERS SUPABASE ───────────────────────────────────────
 async function getSiteConfig() {
   const { data, error } = await supabase.from('site_config').select('key, value');
   if (error) throw error;
@@ -242,7 +257,7 @@ function formatData(site, categories, mods, promotions, discordRoles) {
   };
 }
 
-// ── 5. MIDDLEWARE ADMIN ───────────────────────────────────────
+// ── 7. MIDDLEWARE ADMIN ───────────────────────────────────────
 function requireAdmin(req, res, next) {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: 'Non connecté. Connectez-vous via Discord.' });
@@ -251,7 +266,7 @@ function requireAdmin(req, res, next) {
   res.status(403).json({ error: "Accès refusé. Vous n'avez pas les droits admin." });
 }
 
-// ── 6. DISCORD OAUTH2 ─────────────────────────────────────────
+// ── 8. DISCORD OAUTH2 ─────────────────────────────────────────
 app.get('/auth/discord', (req, res) => {
   const params = new URLSearchParams({
     client_id:     config.CLIENT_ID,
@@ -284,7 +299,6 @@ app.get('/auth/discord/callback', async (req, res) => {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const userData = await userRes.json();
-
     let memberRoles = [];
 
     try {
@@ -339,7 +353,7 @@ app.post('/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// ── 7. PROTECTION /admin ──────────────────────────────────────
+// ── 9. PROTECTION /admin ──────────────────────────────────────
 app.get('/admin', (req, res, next) => {
   const user    = req.session.user;
   const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
@@ -354,7 +368,7 @@ app.get('/admin/', (req, res, next) => {
   res.status(404).send('404 - Page non trouvée');
 });
 
-// ── 8. API PUBLIQUE ───────────────────────────────────────────
+// ── 10. API PUBLIQUE ──────────────────────────────────────────
 app.get('/api/public', async (req, res) => {
   try {
     const [site, categories, mods, promotions, discordRoles] = await Promise.all([
@@ -397,7 +411,7 @@ app.get('/api/user', async (req, res) => {
   }
 });
 
-// ── 9. API ADMIN ──────────────────────────────────────────────
+// ── 11. API ADMIN ─────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: "Connectez-vous d'abord via Discord." });
@@ -458,7 +472,6 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       const newIds      = d.mods.map(m => m.id);
       const toDelete    = existingIds.filter(id => !newIds.includes(id));
       if (toDelete.length > 0) await supabase.from('mods').delete().in('id', toDelete);
-
       for (const mod of d.mods) {
         const { error: upsertError } = await supabase.from('mods').upsert({
           id:          mod.id,
@@ -513,14 +526,12 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
   }
 });
 
-// ── 10. API COMMANDE ──────────────────────────────────────────
+// ── 12. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
   const { items, totalPrice, discordUser } = req.body;
-
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'Panier vide.' });
   }
-
   try {
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
@@ -560,9 +571,8 @@ app.post('/api/order', async (req, res) => {
       topic:                `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}`,
     });
 
-    const coreOption = req.body.coreOption || false;
-
-    const itemLines = items.map(item => {
+    const coreOption    = req.body.coreOption || false;
+    const itemLines     = items.map(item => {
       const opts   = item.options || {};
       const extra  = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
       const total  = (item.price + extra) * item.quantity;
@@ -596,7 +606,6 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
-
   } catch (err) {
     console.error('Erreur création ticket:', err);
     res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message });
