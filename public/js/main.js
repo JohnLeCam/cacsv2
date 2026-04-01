@@ -387,7 +387,8 @@ function setCarouselSlide(id, index) {
   const el = document.getElementById(id);
   if (!el) return;
   el.dataset.current = index;
-  el.querySelector('.mod-carousel-track').style.transform = `translateX(-${index * 100}%)`;
+  const slideWidth = el.offsetWidth;
+  el.querySelector('.mod-carousel-track').style.transform = `translateX(-${index * slideWidth}px)`;
   el.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
@@ -494,7 +495,8 @@ function setDetailSlide(index) {
   const el = document.getElementById('detailCarousel');
   if (!el) return;
   el.dataset.current = index;
-  el.querySelector('.detail-carousel-track').style.transform = `translateX(-${index * 100}%)`;
+  const slideWidth = el.offsetWidth;
+  el.querySelector('.detail-carousel-track').style.transform = `translateX(-${index * slideWidth}px)`;
   el.querySelectorAll('.detail-carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
