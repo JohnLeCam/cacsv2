@@ -116,6 +116,41 @@ class SupabaseStore extends SupabaseSessionStore {
   }
 }
 
+async function isMaintenanceMode() {
+  const { data } = await supabase
+    .from('site_config').select('value').eq('key', 'maintenance_mode').single();
+  return data?.value === 'true';
+}
+
+app.use(async (req, res, next) => {
+  const bypass = [
+    '/maintenance', '/auth/discord', '/auth/discord/callback',
+    '/auth/logout', '/api/user', '/api/maintenance-status'
+  ];
+  const isAsset = req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.includes('.');
+  if (bypass.some(p => req.path.startsWith(p)) || isAsset) return next();
+
+  const maintenance = await isMaintenanceMode();
+  if (!maintenance) return next();
+
+  const user = req.session.user;
+  if (!user) return res.redirect('/maintenance');
+
+  const isStaff = STAFF_ROLE_IDS.some(id => user.roles.includes(id));
+  const isAdmin = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  if (isStaff || isAdmin) return next();
+
+  return res.redirect('/maintenance');
+});
+
+app.get('/api/maintenance-status', async (req, res) => {
+  const maintenance = await isMaintenanceMode();
+  const user = req.session.user;
+  const isStaff = user && STAFF_ROLE_IDS.some(id => user.roles.includes(id));
+  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  res.json({ maintenance, isStaff: !!(isStaff || isAdmin) });
+});
+
 app.use(session({
   store:             new SupabaseStore(),
   secret:            config.SESSION_SECRET || 'fallback-secret',

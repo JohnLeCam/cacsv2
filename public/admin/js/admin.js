@@ -1,11 +1,5 @@
-// ============================================================
-//  ADMIN.JS — Cac's GTA V Mods
-//  Gère tout le panel admin : connexion, CRUD mods/promos/rôles, config
-// ============================================================
+let data = null;
 
-let data = null; // Toutes les données du site (chargées depuis l'API)
-
-// ─── CONNEXION ADMIN ─────────────────────────────────────────
 async function doLogin() {
   const pwd = document.getElementById('pwdInput').value;
   const err = document.getElementById('loginError');
@@ -37,7 +31,6 @@ async function adminLogout() {
   location.reload();
 }
 
-// ─── CHARGEMENT DES DONNÉES ──────────────────────────────────
 async function loadAdminData() {
   try {
     const res = await fetch('/api/admin/data');
@@ -55,7 +48,6 @@ async function loadAdminData() {
   }
 }
 
-// ─── SAUVEGARDE GÉNÉRALE ─────────────────────────────────────
 async function saveAll() {
   setSaveStatus('saving', 'Sauvegarde...');
   try {
@@ -82,7 +74,6 @@ function setSaveStatus(cls, txt) {
   el.textContent = txt;
 }
 
-// ─── NAVIGATION PAR ONGLETS ──────────────────────────────────
 const tabTitles = {
   dashboard:  'Dashboard',
   mods:       'Gérer les mods',
@@ -94,17 +85,13 @@ const tabTitles = {
 };
 
 function switchTab(tab) {
-  // Désactiver tous les onglets
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-
-  // Activer le bon onglet
   document.getElementById(`tab-${tab}`).classList.add('active');
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   document.getElementById('tabTitle').textContent = tabTitles[tab] || tab;
 }
 
-// ─── DASHBOARD ───────────────────────────────────────────────
 function renderDashboard() {
   if (!data) return;
 
@@ -138,13 +125,10 @@ function renderDashboard() {
   `;
 }
 
-// ─── MODS ────────────────────────────────────────────────────
-
 function renderModsList() {
   const list = document.getElementById('modsList');
   if (!list || !data) return;
 
-  // Trier par position avant d'afficher
   if (data.mods) {
     data.mods.forEach((m, i) => { if (m.position === undefined) m.position = i; });
     data.mods.sort((a, b) => a.position - b.position);
@@ -155,7 +139,6 @@ function renderModsList() {
     return;
   }
 
-  // Trouver la couleur de catégorie
   function getCatColor(catId) {
     const cat = (data.categories || []).find(c => (c.id || c) === catId);
     return cat?.color || '#cc0000';
@@ -184,8 +167,6 @@ function renderModsList() {
   `).join('');
 }
 
-// ─── DRAG & DROP ─────────────────────────────────────────────
-
 let dragSrcIndex = null;
 
 function onDragStart(e, index) {
@@ -209,11 +190,8 @@ function onDrop(e, targetIndex) {
   e.currentTarget.classList.remove('drag-over');
   if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
 
-  // Réordonner le tableau
   const moved = data.mods.splice(dragSrcIndex, 1)[0];
   data.mods.splice(targetIndex, 0, moved);
-
-  // Mettre à jour les positions
   data.mods.forEach((m, i) => { m.position = i; });
 
   saveAll();
@@ -228,7 +206,6 @@ function onDragEnd(e) {
 }
 
 function openModModal(index = null) {
-  // Remplir le select catégorie (compatible objets et chaînes)
   const catSelect = document.getElementById('modCategory');
   catSelect.innerHTML = (data.categories || []).map(c => {
     const id   = c.id   || c;
@@ -307,8 +284,6 @@ function deleteMod(index) {
 
 function closeModModal() { closeModal('modModal'); }
 
-// ─── PROMOTIONS ──────────────────────────────────────────────
-
 function renderPromosList() {
   const list = document.getElementById('promosList');
   if (!list || !data) return;
@@ -347,12 +322,11 @@ function renderPromosList() {
 }
 
 function openPromoModal(index = null) {
-  // Checkboxes catégories (compatibilité objets {id, name, color, icon} et chaînes)
   const wrap = document.getElementById('promoCatCheckboxes');
   wrap.innerHTML = (data.categories || []).map(c => {
-    const id   = c.id   || c;
-    const name = c.name || c;
-    const icon = c.icon || '';
+    const id    = c.id   || c;
+    const name  = c.name || c;
+    const icon  = c.icon || '';
     const color = c.color || '';
     return `
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:var(--bg-2);border:1px solid var(--border-b);padding:6px 12px;border-radius:var(--r);font-size:0.82rem;color:${color || 'var(--grey-l)'};">
@@ -371,7 +345,6 @@ function openPromoModal(index = null) {
     document.getElementById('promoEndDate').value   = toDatetimeLocal(p.endDate);
     setToggle('togglePromoActive', p.active !== false);
 
-    // Cocher les catégories
     const cats = p.applyToCategories || [];
     document.querySelectorAll('.promo-cat-cb').forEach(cb => {
       cb.checked = cats.includes(cb.value) || cats.length === 0;
@@ -382,7 +355,6 @@ function openPromoModal(index = null) {
     document.getElementById('promoName').value     = '';
     document.getElementById('promoDesc').value     = '';
     document.getElementById('promoDiscount').value = 10;
-    // Date par défaut : dans 7 jours
     const nextWeek = new Date(Date.now() + 7 * 86400000);
     document.getElementById('promoEndDate').value  = toDatetimeLocal(nextWeek.toISOString());
     setToggle('togglePromoActive', true);
@@ -439,8 +411,6 @@ function deletePromo(index) {
 }
 
 function closePromoModal() { closeModal('promoModal'); }
-
-// ─── RÔLES DISCORD ───────────────────────────────────────────
 
 function renderRolesList() {
   const list = document.getElementById('rolesList');
@@ -529,7 +499,6 @@ function deleteRole(index) {
 
 function closeRoleModal() { closeModal('roleModal'); }
 
-// Swatch couleur en temps réel
 function updateColorSwatch() {
   const val = document.getElementById('roleColor').value;
   document.getElementById('roleColorPicker').value = isValidColor(val) ? val : '#888888';
@@ -547,29 +516,46 @@ function isValidColor(str) {
 
 function loadConfigForm() {
   if (!data?.site) return;
-  document.getElementById('cfg-title').value        = data.site.title || '';
-  document.getElementById('cfg-heroTagline').value  = data.site.heroTagline || '';
-  document.getElementById('cfg-subtitle').value     = data.site.subtitle || '';
-  document.getElementById('cfg-discordUrl').value   = data.site.discordUrl || '';
+  document.getElementById('cfg-title').value        = data.site.title        || '';
+  document.getElementById('cfg-heroTagline').value  = data.site.heroTagline  || '';
+  document.getElementById('cfg-subtitle').value     = data.site.subtitle     || '';
+  document.getElementById('cfg-discordUrl').value   = data.site.discordUrl   || '';
   document.getElementById('cfg-announcement').value = data.site.announcement || '';
 
-  // cfg-categories supprimé — les catégories se gèrent dans l'onglet dédié
+  const maintenanceOn = data.site.maintenance_mode === 'true';
+  setToggle('toggleMaintenance', maintenanceOn);
+  updateMaintenanceStatus(maintenanceOn);
 }
 
 async function saveConfig() {
+  const maintenanceOn = isToggleOn('toggleMaintenance');
+
   data.site = {
     ...data.site,
-    title:        document.getElementById('cfg-title').value.trim(),
-    heroTagline:  document.getElementById('cfg-heroTagline').value.trim(),
-    subtitle:     document.getElementById('cfg-subtitle').value.trim(),
-    discordUrl:   document.getElementById('cfg-discordUrl').value.trim(),
-    announcement: document.getElementById('cfg-announcement').value.trim()
+    title:            document.getElementById('cfg-title').value.trim(),
+    heroTagline:      document.getElementById('cfg-heroTagline').value.trim(),
+    subtitle:         document.getElementById('cfg-subtitle').value.trim(),
+    discordUrl:       document.getElementById('cfg-discordUrl').value.trim(),
+    announcement:     document.getElementById('cfg-announcement').value.trim(),
+    maintenance_mode: maintenanceOn ? 'true' : 'false'
   };
 
-  // Les catégories ne sont PAS modifiées ici — elles se gèrent dans l'onglet Catégories
-
   await saveAll();
+  updateMaintenanceStatus(maintenanceOn);
   showToast('Configuration sauvegardée !');
+}
+
+function toggleMaintenance() {
+  document.getElementById('toggleMaintenance').classList.toggle('on');
+  const isOn = isToggleOn('toggleMaintenance');
+  updateMaintenanceStatus(isOn);
+}
+
+function updateMaintenanceStatus(isOn) {
+  const statusEl = document.getElementById('maintenanceStatus');
+  if (!statusEl) return;
+  statusEl.textContent = isOn ? '🔴 MAINTENANCE ACTIVE' : '🟢 Site accessible';
+  statusEl.style.color = isOn ? '#c8102e' : '#4ade80';
 }
 
 // ─── PARAMÈTRES ──────────────────────────────────────────────
@@ -578,7 +564,7 @@ async function changePassword() {
   const p1 = document.getElementById('newPwd1').value;
   const p2 = document.getElementById('newPwd2').value;
 
-  if (!p1)     { showToast('Entre un nouveau mot de passe.', true); return; }
+  if (!p1)       { showToast('Entre un nouveau mot de passe.', true); return; }
   if (p1 !== p2) { showToast('Les deux mots de passe ne correspondent pas.', true); return; }
   if (p1.length < 6) { showToast('Minimum 6 caractères.', true); return; }
 
@@ -591,7 +577,6 @@ async function changePassword() {
   showToast('Mot de passe changé ! Reconnecte-toi.');
   setTimeout(() => adminLogout(), 2000);
 }
-
 
 // ─── CATÉGORIES ──────────────────────────────────────────────
 
@@ -638,7 +623,6 @@ function openCatModal(index = null) {
     document.getElementById('catIcon').value  = cat.icon  || '';
     document.getElementById('catColor').value = cat.color || '#888888';
     document.getElementById('catColorPicker').value = cat.color || '#888888';
-    // Bloquer l'édition de l'ID si la catégorie est déjà utilisée
     document.getElementById('catId').disabled = true;
   } else {
     document.getElementById('catModalTitle').textContent = 'Nouvelle catégorie';
@@ -656,11 +640,10 @@ function openCatModal(index = null) {
 
 function autoSlug() {
   const idx = document.getElementById('catIdx').value;
-  // Seulement auto-générer si c'est une nouvelle catégorie
   if (idx !== '') return;
   const name = document.getElementById('catName').value;
   const slug = name.toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // retirer accents
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s-]/g, '')
     .trim().replace(/\s+/g, '-');
   document.getElementById('catId').value = slug;
@@ -694,11 +677,10 @@ function updateCatPreview() {
     preview.style.borderColor = color + '60';
     preview.style.background  = color + '18';
   }
-  if (pIcon)  pIcon.textContent = icon;
-  if (pName)  pName.textContent = name;
+  if (pIcon) pIcon.textContent = icon;
+  if (pName) pName.textContent = name;
 }
 
-// Mettre à jour la prévisualisation en temps réel
 document.addEventListener('input', e => {
   if (['catIcon','catName','catColor'].includes(e.target.id)) updateCatPreview();
 });
@@ -714,7 +696,6 @@ async function saveCat() {
   if (!name) { alert('Le nom est obligatoire.'); return; }
   if (!/^[a-z0-9-]+$/.test(id)) { alert("L'identifiant ne peut contenir que des lettres minuscules, chiffres et tirets."); return; }
 
-  // Vérifier doublon d'ID sur création
   if (idx === '') {
     const exists = (data.categories || []).some(c => c.id === id);
     if (exists) { alert(`L'identifiant "${id}" existe déjà.`); return; }
@@ -742,7 +723,6 @@ async function saveCat() {
 
 function deleteCat(index) {
   const cat = data.categories[index];
-  // Vérifier si des mods utilisent cette catégorie
   const modsUsing = (data.mods || []).filter(m => m.category === cat.id).length;
   if (modsUsing > 0) {
     if (!confirm(`⚠️ ${modsUsing} mod(s) utilisent cette catégorie. Les supprimer quand même ?`)) return;
@@ -758,7 +738,6 @@ function deleteCat(index) {
 
 function closeCatModal() { closeModal('catModal'); }
 
-// Drag & drop spécifique aux catégories
 function onCatDrop(e, targetIndex) {
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
@@ -773,7 +752,7 @@ function onCatDrop(e, targetIndex) {
   showToast('Ordre mis à jour !');
 }
 
-// ─── RICH TEXT EDITOR ────────────────────────────────────────
+// ─── RICH TEXT ───────────────────────────────────────────────
 
 function rfmt(cmd, value = null) {
   document.getElementById('modDesc').focus();
@@ -791,44 +770,29 @@ function updateRichToolbar() {
   });
 }
 
-// Mettre à jour la toolbar quand la sélection change
 document.addEventListener('selectionchange', () => {
   if (document.activeElement?.id === 'modDesc') updateRichToolbar();
 });
 
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-
-function openModal(id) {
-  document.getElementById(id).classList.add('open');
-}
-
-function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
-}
-
-// ─── HELPERS TOGGLES ─────────────────────────────────────────
+// ─── TOGGLES ─────────────────────────────────────────────────
 
 function setToggle(id, on) {
   const el = document.getElementById(id);
+  if (!el) return;
   if (on) el.classList.add('on');
   else    el.classList.remove('on');
 }
 
 function isToggleOn(id) {
-  return document.getElementById(id).classList.contains('on');
+  return document.getElementById(id)?.classList.contains('on') || false;
 }
 
-function toggleModFeatured() {
-  document.getElementById('toggleFeatured').classList.toggle('on');
-}
-
-function toggleModVisible() {
-  document.getElementById('toggleVisible').classList.toggle('on');
-}
-
-function togglePromoActive() {
-  document.getElementById('togglePromoActive').classList.toggle('on');
-}
+function toggleModFeatured()  { document.getElementById('toggleFeatured').classList.toggle('on'); }
+function toggleModVisible()   { document.getElementById('toggleVisible').classList.toggle('on'); }
+function togglePromoActive()  { document.getElementById('togglePromoActive').classList.toggle('on'); }
 
 // ─── TOAST ───────────────────────────────────────────────────
 
@@ -838,12 +802,11 @@ function showToast(msg, isError = false) {
   const toast = document.getElementById('toast');
   toast.textContent = msg;
   toast.className   = isError ? 'error show' : 'show';
-
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 3200);
 }
 
-// ─── HELPERS DIVERS ──────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────────
 
 function esc(str) {
   if (!str) return '';
@@ -857,16 +820,14 @@ function formatEUR(amount) {
 }
 
 function toDatetimeLocal(isoStr) {
-  // Convertit une date ISO en format compatible avec input datetime-local
   const d = new Date(isoStr);
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-
 // ─── GESTIONNAIRE MULTI-IMAGES ───────────────────────────────
 
-let _imageList = []; // tableau d'URLs
+let _imageList = [];
 
 function loadImageManager(images) {
   _imageList = [...(images || [])];
@@ -928,12 +889,12 @@ function imgSetMain(index) {
   renderImageManager();
 }
 
-// Drag & drop images
 let _imgDragSrc = null;
 function imgDragStart(e, i) { _imgDragSrc = i; e.currentTarget.style.opacity = '0.4'; }
-function imgDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
-function imgDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
-function imgDragEnd(e) { e.currentTarget.style.opacity = ''; document.querySelectorAll('.img-mgr-item').forEach(el => el.classList.remove('drag-over')); }
+function imgDragOver(e)     { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function imgDragLeave(e)    { e.currentTarget.classList.remove('drag-over'); }
+function imgDragEnd(e)      { e.currentTarget.style.opacity = ''; document.querySelectorAll('.img-mgr-item').forEach(el => el.classList.remove('drag-over')); }
+
 function imgDrop(e, targetIdx) {
   e.preventDefault();
   e.currentTarget.classList.remove('drag-over');
@@ -944,15 +905,15 @@ function imgDrop(e, targetIdx) {
 }
 
 // ─── INIT ────────────────────────────────────────────────────
-// Vérifier si déjà connecté (si la session admin est encore active)
+
 (async () => {
   try {
-    const res = await fetch('/api/admin/check');
+    const res    = await fetch('/api/admin/check');
     const result = await res.json();
     if (result.isAdmin) {
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('adminApp').style.display    = 'flex';
       await loadAdminData();
     }
-  } catch { /* Pas connecté, on affiche la page de connexion */ }
+  } catch {}
 })();

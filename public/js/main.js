@@ -32,10 +32,77 @@ async function loadAll() {
     renderPromos();
     renderCategoryFilters();
     renderMods();
+    await checkMaintenanceBanner();
 
   } catch (err) {
     console.error('Erreur chargement données:', err);
   }
+}
+
+async function checkMaintenanceBanner() {
+  try {
+    const res  = await fetch('/api/maintenance-status');
+    const data = await res.json();
+    if (data.maintenance && data.isStaff) {
+      showMaintenanceBanner();
+    }
+  } catch (e) {}
+}
+
+function showMaintenanceBanner() {
+  if (document.getElementById('maintBanner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'maintBanner';
+  banner.style.cssText = `
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      -45deg,
+      #c8102e 0px, #c8102e 20px,
+      #a00c25 20px, #a00c25 40px
+    );
+    overflow: hidden;
+    border-top: 3px solid rgba(255,255,255,0.25);
+    box-shadow: 0 -4px 30px rgba(200,16,46,0.5);
+  `;
+
+  const track = document.createElement('div');
+  track.style.cssText = `
+    display: flex;
+    animation: maintScroll 14s linear infinite;
+    white-space: nowrap;
+  `;
+
+  const text = '🔧 SITE EN MAINTENANCE — VISIBLE PAR LE STAFF UNIQUEMENT ';
+  let html = '';
+  for (let i = 0; i < 10; i++) {
+    html += `<span style="
+      display: inline-block;
+      padding: 10px 40px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 0.25em;
+      color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    ">${text}</span>`;
+  }
+  track.innerHTML = html + html;
+  banner.appendChild(track);
+
+  if (!document.getElementById('maintBannerStyle')) {
+    const style = document.createElement('style');
+    style.id = 'maintBannerStyle';
+    style.textContent = `@keyframes maintScroll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }`;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(banner);
+  document.body.style.paddingBottom = '45px';
 }
 
 // ─── Config du site ──────────────────────────────────────────
@@ -387,10 +454,7 @@ function setCarouselSlide(id, index) {
   const el = document.getElementById(id);
   if (!el) return;
   el.dataset.current = index;
-  const track = el.querySelector('.mod-carousel-track');
-  const firstSlide = el.querySelector('.mod-carousel-slide');
-  const slideWidth = firstSlide ? firstSlide.offsetWidth : el.offsetWidth;
-  track.style.transform = `translateX(-${index * slideWidth}px)`;
+  el.querySelector('.mod-carousel-track').style.transform = `translateX(-${index * 100}%)`;
   el.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
@@ -497,10 +561,7 @@ function setDetailSlide(index) {
   const el = document.getElementById('detailCarousel');
   if (!el) return;
   el.dataset.current = index;
-  const track = el.querySelector('.detail-carousel-track');
-  const firstSlide = el.querySelector('.detail-carousel-slide');
-  const slideWidth = firstSlide ? firstSlide.offsetWidth : el.offsetWidth;
-  track.style.transform = `translateX(-${index * slideWidth}px)`;
+  el.querySelector('.detail-carousel-track').style.transform = `translateX(-${index * 100}%)`;
   el.querySelectorAll('.detail-carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 

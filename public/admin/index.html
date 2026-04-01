@@ -7,9 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-
   <style>
-    /* ─── Variables ─── */
     :root {
       --bg-0: #070708;
       --bg-1: #0d0d0f;
@@ -47,6 +45,7 @@
 
     a { color: inherit; text-decoration: none; }
     button { cursor: pointer; font-family: var(--font); }
+
     input, textarea, select {
       font-family: var(--font);
       background: var(--bg-2);
@@ -59,12 +58,22 @@
       transition: border-color var(--tr);
       width: 100%;
     }
+
     input:focus, textarea:focus, select:focus { border-color: var(--red-dim); }
     textarea { resize: vertical; min-height: 80px; }
     select option { background: var(--bg-2); }
-    label { display: block; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.06em; color: var(--grey-l); margin-bottom: 5px; text-transform: uppercase; }
 
-    /* ─── ECRAN DE CONNEXION ─── */
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--grey-l);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+
+    /* ─── LOGIN ─── */
     #loginScreen {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -87,7 +96,6 @@
       font-weight: 700;
       letter-spacing: 0.08em;
       margin-bottom: 6px;
-      color: var(--white);
     }
 
     .login-box p {
@@ -104,11 +112,7 @@
       letter-spacing: 0.1em;
     }
 
-    .login-box .btn-red {
-      width: 100%;
-      padding: 12px;
-      font-size: 0.9rem;
-    }
+    .login-box .btn-red { width: 100%; padding: 12px; font-size: 0.9rem; }
 
     #loginError {
       color: var(--red);
@@ -117,10 +121,9 @@
       min-height: 20px;
     }
 
-    /* ─── LAYOUT ADMIN ─── */
+    /* ─── LAYOUT ─── */
     #adminApp { display: none; width: 100%; }
 
-    /* Sidebar */
     .sidebar {
       width: 220px;
       flex-shrink: 0;
@@ -143,7 +146,6 @@
       font-weight: 700;
       letter-spacing: 0.1em;
       text-transform: uppercase;
-      color: var(--white);
     }
 
     .sidebar-logo span { color: var(--red); }
@@ -213,7 +215,6 @@
 
     .btn-logout-admin:hover { border-color: var(--red-dim); color: var(--red); }
 
-    /* Contenu principal */
     .main-content {
       margin-left: 220px;
       flex: 1;
@@ -254,8 +255,8 @@
     .content { padding: 28px; flex: 1; }
 
     /* ─── ONGLETS ─── */
-    .tab-pane { display: none; }
-    .tab-pane.active { display: block; }
+    .tab-pane          { display: none; }
+    .tab-pane.active   { display: block; }
 
     /* ─── CARDS ─── */
     .card {
@@ -280,7 +281,6 @@
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--white);
     }
 
     .card-body { padding: 22px; }
@@ -292,8 +292,8 @@
       gap: 16px;
     }
 
-    .form-group { display: flex; flex-direction: column; }
-    .form-group.full { grid-column: 1 / -1; }
+    .form-group         { display: flex; flex-direction: column; }
+    .form-group.full    { grid-column: 1 / -1; }
 
     .form-row {
       display: flex;
@@ -304,7 +304,7 @@
 
     .form-row .form-group { flex: 1; margin: 0; }
 
-    /* Toggle switch */
+    /* ─── TOGGLE ─── */
     .toggle-wrap {
       display: flex;
       align-items: center;
@@ -334,15 +334,15 @@
       transition: transform var(--tr);
     }
 
-    .toggle.on { background: var(--green); }
-    .toggle.on::after { transform: translateX(18px); }
+    .toggle.on            { background: var(--green); }
+    .toggle.on::after     { transform: translateX(18px); }
+    .toggle.on.danger     { background: var(--red); }
 
     .toggle-label {
       font-size: 0.88rem;
       font-weight: 600;
       color: var(--grey-l);
     }
-
 
     /* ─── GESTIONNAIRE MULTI-IMAGES ─── */
     .img-mgr-list {
@@ -352,38 +352,42 @@
       margin-bottom: 10px;
       min-height: 40px;
     }
+
     .img-mgr-empty {
       color: var(--grey-m);
       font-size: 0.82rem;
       font-style: italic;
       padding: 10px 0;
     }
+
     .img-mgr-item {
       display: flex;
       align-items: center;
       gap: 10px;
-      background: var(--bg-3);
+      background: var(--bg-2);
       border: 1px solid var(--border-b);
       border-radius: var(--r);
       padding: 8px 12px;
-      cursor: default;
       transition: border-color 0.2s;
     }
+
     .img-mgr-item.drag-over { border-color: var(--red); box-shadow: 0 0 0 2px rgba(204,0,0,0.25); }
+
     .img-mgr-handle {
       cursor: grab;
       color: var(--grey-m);
       font-size: 1rem;
       flex-shrink: 0;
     }
+
     .img-mgr-item img {
-      width: 52px;
-      height: 36px;
+      width: 52px; height: 36px;
       object-fit: cover;
       border-radius: 3px;
       flex-shrink: 0;
       background: var(--bg-2);
     }
+
     .img-mgr-info {
       flex: 1;
       min-width: 0;
@@ -391,12 +395,14 @@
       flex-direction: column;
       gap: 2px;
     }
+
     .img-mgr-label {
       font-size: 0.72rem;
       font-family: var(--mono);
       color: var(--grey-l);
       font-weight: 600;
     }
+
     .img-mgr-url {
       font-size: 0.72rem;
       color: var(--grey-m);
@@ -404,11 +410,9 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .img-mgr-actions {
-      display: flex;
-      gap: 6px;
-      flex-shrink: 0;
-    }
+
+    .img-mgr-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
     .img-mgr-btn {
       background: transparent;
       border: 1px solid var(--border-b);
@@ -420,17 +424,15 @@
       display: flex; align-items: center; justify-content: center;
       transition: all 0.15s;
     }
-    .img-mgr-btn:hover { background: var(--bg-2); color: #fff; }
-    .img-mgr-btn.del:hover { background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.5); color: #f87171; }
-    .img-mgr-add {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .img-mgr-add input { flex: 1; margin: 0; }
-    .img-mgr-add .btn { white-space: nowrap; flex-shrink: 0; padding: 9px 16px; }
 
-    /* ─── LISTE D'ÉLÉMENTS ─── */
+    .img-mgr-btn:hover     { background: var(--bg-2); color: #fff; }
+    .img-mgr-btn.del:hover { background: rgba(220,38,38,0.2); border-color: rgba(220,38,38,0.5); color: #f87171; }
+
+    .img-mgr-add { display: flex; gap: 8px; align-items: center; }
+    .img-mgr-add input { flex: 1; margin: 0; }
+    .img-mgr-add .btn  { white-space: nowrap; flex-shrink: 0; padding: 9px 16px; }
+
+    /* ─── LISTE ITEMS ─── */
     .items-list { display: flex; flex-direction: column; gap: 12px; }
 
     .item-row {
@@ -446,7 +448,6 @@
 
     .item-row:hover { border-color: rgba(255,255,255,0.15); }
 
-    /* Drag & drop */
     .drag-handle {
       cursor: grab;
       color: var(--grey-m);
@@ -456,23 +457,20 @@
       flex-shrink: 0;
       transition: color 0.15s;
     }
-    .drag-handle:hover { color: var(--grey-l); }
-    .item-row.dragging {
-      opacity: 0.4;
-      border-color: var(--red);
-    }
-    .item-row.drag-over {
-      border-color: var(--red);
-      box-shadow: 0 0 0 2px rgba(204,0,0,0.3);
-    }
 
-    /* ─── ÉDITEUR RICHE ─── */
+    .drag-handle:hover { color: var(--grey-l); }
+
+    .item-row.dragging  { opacity: 0.4; border-color: var(--red); }
+    .item-row.drag-over { border-color: var(--red); box-shadow: 0 0 0 2px rgba(204,0,0,0.3); }
+
+    /* ─── RICH TEXT ─── */
     .rich-editor-wrap {
       border: 1px solid var(--border-b);
       border-radius: var(--r);
       overflow: hidden;
       background: var(--bg-1);
     }
+
     .rich-toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -481,6 +479,7 @@
       background: var(--bg-2);
       border-bottom: 1px solid var(--border-b);
     }
+
     .rich-btn {
       background: transparent;
       border: 1px solid transparent;
@@ -494,22 +493,12 @@
       transition: all 0.15s;
       line-height: 1.4;
     }
-    .rich-btn:hover {
-      background: var(--bg-3);
-      border-color: var(--border-b);
-      color: #fff;
-    }
-    .rich-btn.active {
-      background: rgba(204,0,0,0.15);
-      border-color: rgba(204,0,0,0.4);
-      color: var(--red);
-    }
-    .rich-separator {
-      width: 1px;
-      background: var(--border-b);
-      margin: 2px 4px;
-      align-self: stretch;
-    }
+
+    .rich-btn:hover { background: var(--bg-2); border-color: var(--border-b); color: #fff; }
+    .rich-btn.active { background: rgba(204,0,0,0.15); border-color: rgba(204,0,0,0.4); color: var(--red); }
+
+    .rich-separator { width: 1px; background: var(--border-b); margin: 2px 4px; align-self: stretch; }
+
     .rich-content {
       min-height: 120px;
       max-height: 300px;
@@ -520,15 +509,17 @@
       line-height: 1.6;
       color: var(--grey-l);
     }
+
     .rich-content:empty:before {
       content: attr(data-placeholder);
       color: var(--grey-m);
       pointer-events: none;
     }
+
     .rich-content b, .rich-content strong { color: #fff; font-weight: 700; }
-    .rich-content i, .rich-content em { color: #ccc; font-style: italic; }
-    .rich-content u { text-decoration: underline; }
-    .rich-content ul { list-style: disc; padding-left: 1.4em; margin: 6px 0; }
+    .rich-content i, .rich-content em     { color: #ccc; font-style: italic; }
+    .rich-content u  { text-decoration: underline; }
+    .rich-content ul { list-style: disc;    padding-left: 1.4em; margin: 6px 0; }
     .rich-content ol { list-style: decimal; padding-left: 1.4em; margin: 6px 0; }
     .rich-content li { margin: 2px 0; }
     .rich-content p  { margin: 4px 0; }
@@ -536,11 +527,10 @@
     .item-cat-dot {
       width: 10px; height: 10px;
       border-radius: 50%;
-      background: var(--red);
       flex-shrink: 0;
     }
 
-    .item-info { flex: 1; min-width: 0; }
+    .item-info    { flex: 1; min-width: 0; }
 
     .item-name {
       font-size: 0.92rem;
@@ -590,21 +580,13 @@
       transition: all var(--tr);
     }
 
-    .btn-red   { background: var(--red); color: #fff; }
-    .btn-red:hover { background: #ff1010; transform: translateY(-1px); }
+    .btn-red         { background: var(--red); color: #fff; }
+    .btn-red:hover   { background: #ff1010; transform: translateY(-1px); }
 
-    .btn-ghost {
-      background: transparent;
-      border: 1px solid var(--border-b);
-      color: var(--grey-l);
-    }
-    .btn-ghost:hover { border-color: var(--border-b); color: var(--white); background: rgba(255,255,255,0.04); }
+    .btn-ghost       { background: transparent; border: 1px solid var(--border-b); color: var(--grey-l); }
+    .btn-ghost:hover { color: var(--white); background: rgba(255,255,255,0.04); }
 
-    .btn-danger {
-      background: transparent;
-      border: 1px solid rgba(217,0,0,0.3);
-      color: var(--red);
-    }
+    .btn-danger       { background: transparent; border: 1px solid rgba(217,0,0,0.3); color: var(--red); }
     .btn-danger:hover { background: var(--red-subtle); border-color: var(--red); }
 
     .btn-sm { padding: 5px 11px; font-size: 0.75rem; }
@@ -620,7 +602,7 @@
       transition: all var(--tr);
     }
 
-    .btn-icon:hover { color: var(--white); border-color: var(--border-b); background: rgba(255,255,255,0.05); }
+    .btn-icon:hover     { color: var(--white); background: rgba(255,255,255,0.05); }
     .btn-icon.del:hover { color: var(--red); border-color: rgba(217,0,0,0.4); background: var(--red-subtle); }
 
     /* ─── MODALE ─── */
@@ -662,17 +644,10 @@
 
     .modal-title { font-size: 1rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 
-    .modal-close {
-      background: transparent;
-      border: none;
-      color: var(--grey-m);
-      font-size: 1.2rem;
-      transition: color var(--tr);
-    }
-
+    .modal-close { background: transparent; border: none; color: var(--grey-m); font-size: 1.2rem; transition: color var(--tr); }
     .modal-close:hover { color: var(--white); }
 
-    .modal-body { padding: 24px; }
+    .modal-body   { padding: 24px; }
 
     .modal-footer {
       padding: 16px 24px;
@@ -682,7 +657,7 @@
       justify-content: flex-end;
     }
 
-    /* ─── STATS DASHBOARD ─── */
+    /* ─── STATS ─── */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -706,9 +681,9 @@
       margin-bottom: 6px;
     }
 
-    .stat-value.red { color: var(--red); }
+    .stat-value.red   { color: var(--red); }
     .stat-value.green { color: var(--green); }
-    .stat-value.blue { color: var(--blue); }
+    .stat-value.blue  { color: var(--blue); }
 
     .stat-label {
       font-size: 0.75rem;
@@ -716,6 +691,52 @@
       letter-spacing: 0.1em;
       text-transform: uppercase;
       color: var(--grey-m);
+    }
+
+    /* ─── MAINTENANCE BOX ─── */
+    .maintenance-box {
+      background: rgba(217,0,0,0.06);
+      border: 1px solid rgba(217,0,0,0.2);
+      border-radius: 6px;
+      padding: 20px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .maintenance-box-left { flex: 1; min-width: 200px; }
+
+    .maintenance-box-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--white);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .maintenance-box-desc {
+      font-size: 0.82rem;
+      color: var(--grey-m);
+      line-height: 1.5;
+    }
+
+    .maintenance-box-right {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    #maintenanceStatus {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
     }
 
     /* ─── TOAST ─── */
@@ -737,26 +758,13 @@
       max-width: 320px;
     }
 
-    #toast.show { transform: translateX(0); }
+    #toast.show  { transform: translateX(0); }
     #toast.error { border-left-color: var(--red); }
 
     hr.sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
-    /* ─── Color preview ─── */
-    .color-preview-wrap {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
+    .color-preview-wrap { display: flex; align-items: center; gap: 10px; }
     .color-preview-wrap input[type="text"] { flex: 1; }
-
-    .color-swatch {
-      width: 36px; height: 36px;
-      border-radius: var(--r);
-      border: 1px solid var(--border-b);
-      flex-shrink: 0;
-    }
 
     input[type="color"] {
       width: 36px; height: 36px;
@@ -769,10 +777,8 @@
 </head>
 <body>
 
-  <!-- Login screen supprimé — accès via Discord uniquement -->
   <div id="loginScreen" style="display:none"></div>
 
-  <!-- ═════════════════ PANEL ADMIN ═════════════════ -->
   <div id="adminApp">
 
     <!-- SIDEBAR -->
@@ -782,7 +788,7 @@
         <div class="sidebar-sub">Panel Admin</div>
       </div>
 
-      <nav class="sidebar-nav" id="sidebarNav">
+      <nav class="sidebar-nav">
         <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
           <span class="nav-icon">📊</span> Dashboard
         </div>
@@ -821,26 +827,25 @@
 
       <div class="content">
 
-        <!-- ══════════════════ DASHBOARD ══════════════════ -->
+        <!-- ══════════ DASHBOARD ══════════ -->
         <div class="tab-pane active" id="tab-dashboard">
-          <div class="stats-grid" id="statsGrid">
-            <!-- Rempli par JS -->
-          </div>
+          <div class="stats-grid" id="statsGrid"></div>
           <div class="card">
             <div class="card-header">
               <span class="card-title">Bienvenue</span>
             </div>
             <div class="card-body">
-              <p style="color:var(--grey-l); font-size:0.95rem; line-height:1.7">
+              <p style="color:var(--grey-l);font-size:0.95rem;line-height:1.7">
                 Utilise la barre latérale pour gérer tes mods, promotions et rôles Discord.<br>
                 Les modifications sont sauvegardées automatiquement après chaque action.<br><br>
-                <strong style="color:var(--white)">💡 Rappel :</strong> Configure d'abord <code style="font-family:var(--mono);color:var(--red);font-size:0.85rem">config/discord.config.js</code> pour activer la connexion Discord.
+                <strong style="color:var(--white)">💡 Rappel :</strong>
+                Configure d'abord <code style="font-family:var(--mono);color:var(--red);font-size:0.85rem">config/discord.config.js</code> pour activer la connexion Discord.
               </p>
             </div>
           </div>
         </div>
 
-        <!-- ══════════════════ MODS ══════════════════ -->
+        <!-- ══════════ MODS ══════════ -->
         <div class="tab-pane" id="tab-mods">
           <div class="card">
             <div class="card-header">
@@ -848,42 +853,12 @@
               <button class="btn btn-red btn-sm" onclick="openModModal()">+ Ajouter un mod</button>
             </div>
             <div class="card-body">
-              <div class="items-list" id="modsList"><!-- Rempli par JS --></div>
+              <div class="items-list" id="modsList"></div>
             </div>
           </div>
         </div>
 
-        <!-- ══════════════════ PROMOTIONS ══════════════════ -->
-        <div class="tab-pane" id="tab-promos">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Promotions actives</span>
-              <button class="btn btn-red btn-sm" onclick="openPromoModal()">+ Ajouter une promo</button>
-            </div>
-            <div class="card-body">
-              <div class="items-list" id="promosList"><!-- Rempli par JS --></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══════════════════ RÔLES DISCORD ══════════════════ -->
-        <div class="tab-pane" id="tab-roles">
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">Rôles & Réductions</span>
-              <button class="btn btn-red btn-sm" onclick="openRoleModal()">+ Ajouter un rôle</button>
-            </div>
-            <div class="card-body">
-              <p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px;">
-                Chaque rôle Discord peut donner une réduction automatique. Si un membre a plusieurs rôles, la plus grande réduction est appliquée.
-              </p>
-              <div class="items-list" id="rolesList"><!-- Rempli par JS --></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ══════════════════ CONFIGURATION ══════════════════ -->
-        <!-- ══════════════════ CATÉGORIES ══════════════════ -->
+        <!-- ══════════ CATÉGORIES ══════════ -->
         <div class="tab-pane" id="tab-categories">
           <div class="card">
             <div class="card-header">
@@ -894,12 +869,70 @@
               <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:16px">
                 Glisse pour réordonner · Les couleurs s'affichent sur les boutons de filtre et les badges.
               </p>
-              <div class="items-list" id="categoriesList"><!-- Rempli par JS --></div>
+              <div class="items-list" id="categoriesList"></div>
             </div>
           </div>
         </div>
 
+        <!-- ══════════ PROMOTIONS ══════════ -->
+        <div class="tab-pane" id="tab-promos">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Promotions actives</span>
+              <button class="btn btn-red btn-sm" onclick="openPromoModal()">+ Ajouter une promo</button>
+            </div>
+            <div class="card-body">
+              <div class="items-list" id="promosList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════ RÔLES DISCORD ══════════ -->
+        <div class="tab-pane" id="tab-roles">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Rôles & Réductions</span>
+              <button class="btn btn-red btn-sm" onclick="openRoleModal()">+ Ajouter un rôle</button>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">
+                Chaque rôle Discord peut donner une réduction automatique. Si un membre a plusieurs rôles, la plus grande réduction est appliquée.
+              </p>
+              <div class="items-list" id="rolesList"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ══════════ CONFIGURATION ══════════ -->
         <div class="tab-pane" id="tab-config">
+
+          <!-- Mode Maintenance -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">🔧 Mode Maintenance</span>
+            </div>
+            <div class="card-body">
+              <div class="maintenance-box">
+                <div class="maintenance-box-left">
+                  <div class="maintenance-box-title">
+                    🔴 Contrôle d'accès au site
+                  </div>
+                  <div class="maintenance-box-desc">
+                    Quand activé, les visiteurs non connectés et les membres sans rôle staff sont redirigés vers la page de maintenance.<br>
+                    Le staff voit le site normalement avec un bandeau d'avertissement en bas de page.
+                  </div>
+                </div>
+                <div class="maintenance-box-right">
+                  <div class="toggle-wrap" onclick="toggleMaintenance()">
+                    <button class="toggle danger" id="toggleMaintenance"></button>
+                  </div>
+                  <span id="maintenanceStatus" style="color:var(--green)">🟢 Site accessible</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Infos site -->
           <div class="card">
             <div class="card-header">
               <span class="card-title">Informations du site</span>
@@ -923,7 +956,7 @@
                   <input type="text" id="cfg-discordUrl" placeholder="https://discord.gg/...">
                 </div>
                 <div class="form-group full">
-                  <label>Annonce (bandeau d'annonce — laisser vide pour masquer)</label>
+                  <label>Annonce (bandeau défilant — laisser vide pour masquer)</label>
                   <input type="text" id="cfg-announcement" placeholder="🔥 Grosse sortie ce vendredi !">
                 </div>
               </div>
@@ -947,7 +980,7 @@
           </div>
         </div>
 
-        <!-- ══════════════════ PARAMÈTRES ══════════════════ -->
+        <!-- ══════════ PARAMÈTRES ══════════ -->
         <div class="tab-pane" id="tab-settings">
           <div class="card">
             <div class="card-header">
@@ -971,12 +1004,11 @@
           </div>
         </div>
 
-      </div><!-- /content -->
-    </div><!-- /main-content -->
-  </div><!-- /adminApp -->
+      </div>
+    </div>
+  </div>
 
-  <!-- ═══════════════════ MODALE MOD ═══════════════════ -->
-  <!-- ═══════════════════ MODALE CATÉGORIE ══════════════════ -->
+  <!-- ══════════ MODALE CATÉGORIE ══════════ -->
   <div class="modal-overlay" id="catModal" onclick="if(event.target===this)closeCatModal()">
     <div class="modal">
       <div class="modal-header">
@@ -1022,6 +1054,7 @@
     </div>
   </div>
 
+  <!-- ══════════ MODALE MOD ══════════ -->
   <div class="modal-overlay" id="modModal" onclick="if(event.target===this)closeModModal()">
     <div class="modal">
       <div class="modal-header">
@@ -1045,7 +1078,20 @@
           </div>
           <div class="form-group full">
             <label>Description</label>
-            <div class="rich-editor-wrap"><div class="rich-toolbar" id="richToolbar"><button class="rich-btn" onclick="rfmt('bold')" title="Gras"><b>G</b></button><button class="rich-btn" onclick="rfmt('italic')" title="Italique"><i>I</i></button><button class="rich-btn" onclick="rfmt('underline')" title="Souligné"><u>S</u></button><div class="rich-separator"></div><button class="rich-btn" onclick="rfmt('insertUnorderedList')" title="Liste à puces">&bull; Liste</button><button class="rich-btn" onclick="rfmt('insertOrderedList')" title="Liste numérotée">1. Liste</button><div class="rich-separator"></div><button class="rich-btn" onclick="rfmt('formatBlock','p')" title="Paragraphe">&para; Para</button><button class="rich-btn" onclick="rfmt('removeFormat')" title="Effacer le formatage">2715 Format</button></div><div class="rich-content" id="modDesc" contenteditable="true" data-placeholder="Description du mod..."></div></div>
+            <div class="rich-editor-wrap">
+              <div class="rich-toolbar">
+                <button class="rich-btn" onclick="rfmt('bold')" title="Gras"><b>G</b></button>
+                <button class="rich-btn" onclick="rfmt('italic')" title="Italique"><i>I</i></button>
+                <button class="rich-btn" onclick="rfmt('underline')" title="Souligné"><u>S</u></button>
+                <div class="rich-separator"></div>
+                <button class="rich-btn" onclick="rfmt('insertUnorderedList')">• Liste</button>
+                <button class="rich-btn" onclick="rfmt('insertOrderedList')">1. Liste</button>
+                <div class="rich-separator"></div>
+                <button class="rich-btn" onclick="rfmt('formatBlock','p')">¶ Para</button>
+                <button class="rich-btn" onclick="rfmt('removeFormat')">✕ Format</button>
+              </div>
+              <div class="rich-content" id="modDesc" contenteditable="true" data-placeholder="Description du mod..."></div>
+            </div>
           </div>
           <div class="form-group full">
             <label>Images (glisser pour réordonner · la 1ère = photo principale)</label>
@@ -1078,7 +1124,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════ MODALE PROMO ═══════════════════ -->
+  <!-- ══════════ MODALE PROMO ══════════ -->
   <div class="modal-overlay" id="promoModal" onclick="if(event.target===this)closePromoModal()">
     <div class="modal">
       <div class="modal-header">
@@ -1105,7 +1151,7 @@
             <input type="datetime-local" id="promoEndDate">
           </div>
           <div class="form-group full">
-            <label>Applicable sur les catégories (cocher = toutes)</label>
+            <label>Applicable sur les catégories (tout cocher = toutes)</label>
             <div id="promoCatCheckboxes" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
           </div>
           <div class="form-group">
@@ -1124,7 +1170,7 @@
     </div>
   </div>
 
-  <!-- ═══════════════════ MODALE RÔLE ═══════════════════ -->
+  <!-- ══════════ MODALE RÔLE ══════════ -->
   <div class="modal-overlay" id="roleModal" onclick="if(event.target===this)closeRoleModal()">
     <div class="modal">
       <div class="modal-header">
@@ -1165,7 +1211,6 @@
     </div>
   </div>
 
-  <!-- Toast notification -->
   <div id="toast"></div>
 
   <script src="js/admin.js"></script>
