@@ -275,7 +275,7 @@
   </div>
 
   <div class="maint-footer">
-    CAC'S GTA V MODS &nbsp;·&nbsp; C&M MODDING &nbsp;·&nbsp; MAINTENANCE EN COURS
+    CAC'S GTA V MODS &nbsp;·&nbsp; MAINTENANCE EN COURS
   </div>
 
   <script>
@@ -332,6 +332,18 @@
 
     buildTicker();
     checkAuth();
+
+    // Vérifie toutes les 5 secondes si la maintenance est terminée
+setInterval(async () => {
+  try {
+    const res  = await fetch('/api/maintenance-status');
+    const data = await res.json();
+    if (!data.maintenance) {
+      window.location.href = '/';
+    }
+  } catch (e) {}
+}, 5000);
+
   </script>
 </body>
 </html>
