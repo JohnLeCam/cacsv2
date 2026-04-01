@@ -3,10 +3,10 @@
 //  Express + Discord OAuth2 + Supabase + Bot Discord (tickets)
 // ============================================================
 
-const express  = require('express');
-const session  = require('express-session');
-const fetch    = require('node-fetch');
-const path     = require('path');
+const express     = require('express');
+const session     = require('express-session');
+const fetch       = require('node-fetch');
+const path        = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType } = require('discord.js');
 
@@ -74,14 +74,50 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Railway utilise un proxy HTTPS — nécessaire pour les sessions
 app.set('trust proxy', 1);
 
+// ── STORE DE SESSIONS SUPABASE CUSTOM ────────────────────────
+const SupabaseSessionStore = require('express-session').Store;
+
+class SupabaseStore extends SupabaseSessionStore {
+  async get(sid, cb) {
+    try {
+      const { data } = await supabase
+        .from('sessions').select('sess, expire').eq('sid', sid).single();
+      if (!data) return cb(null, null);
+      if (new Date(data.expire) < new Date()) {
+        await supabase.from('sessions').delete().eq('sid', sid);
+        return cb(null, null);
+      }
+      cb(null, data.sess);
+    } catch (e) { cb(null, null); }
+  }
+  async set(sid, session, cb) {
+    try {
+      const expire = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await supabase.from('sessions').upsert(
+        { sid, sess: session, expire: expire.toISOString() },
+        { onConflict: 'sid' }
+      );
+      cb(null);
+    } catch (e) { cb(null); }
+  }
+  async destroy(sid, cb) {
+    try {
+      await supabase.from('sessions').delete().eq('sid', sid);
+      cb(null);
+    } catch (e) { cb(null); }
+  }
+}
+
 app.use(session({
+  store:             new SupabaseStore(),
   secret:            config.SESSION_SECRET || 'fallback-secret',
   resave:            false,
   saveUninitialized: false,
+  rolling:           true,
   cookie: {
     secure:   process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge:   24 * 60 * 60 * 1000
+    maxAge:   7 * 24 * 60 * 60 * 1000  // 7 jours
   }
 }));
 
