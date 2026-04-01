@@ -1,8 +1,3 @@
-// ============================================================
-//  SERVER.JS - Cac's GTA V Mods
-//  Express + Discord OAuth2 + Supabase + Bot Discord (tickets)
-// ============================================================
-
 const express     = require('express');
 const session     = require('express-session');
 const fetch       = require('node-fetch');
@@ -13,7 +8,6 @@ const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType } = require(
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ── CONFIG — fichier local en dev, variables d'env en prod ───
 let config;
 try {
   config = require('./config/discord.config');
@@ -35,10 +29,8 @@ try {
   };
 }
 
-// ── SUPABASE ──────────────────────────────────────────────────
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY);
 
-// ── BOT DISCORD ───────────────────────────────────────────────
 const BOT_TOKEN      = config.BOT_TOKEN      || process.env.BOT_TOKEN;
 const TICKET_CAT_ID  = config.TICKET_CAT_ID  || process.env.TICKET_CAT_ID  || '1488660670726799471';
 const STAFF_ROLE_IDS = config.STAFF_ROLE_IDS || ['1412494453763211385','1412494594117206141','1439750620788822181'];
@@ -59,7 +51,7 @@ discordBot.once('ready', () => {
 discordBot.on('messageCreate', async (message) => {
   if (message.author.bot) return;
   if (message.content === '!close' && message.channel.name?.startsWith('ticket-')) {
-    const member = message.member;
+    const member  = message.member;
     const isStaff = STAFF_ROLE_IDS.some(roleId => member?.roles.cache.has(roleId));
 
     if (!isStaff) {
@@ -76,13 +68,12 @@ discordBot.login(BOT_TOKEN).catch(err => {
   console.error('❌ Erreur connexion bot Discord:', err.message);
 });
 
-// ── MIDDLEWARE ────────────────────────────────────────────────
+// ── 1. MIDDLEWARES DE BASE ────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-// Railway utilise un proxy HTTPS — nécessaire pour les sessions
 app.set('trust proxy', 1);
 
-// ── STORE DE SESSIONS SUPABASE CUSTOM ────────────────────────
+// ── 2. SESSION ────────────────────────────────────────────────
 const SupabaseSessionStore = require('express-session').Store;
 
 class SupabaseStore extends SupabaseSessionStore {
@@ -116,11 +107,29 @@ class SupabaseStore extends SupabaseSessionStore {
   }
 }
 
+app.use(session({
+  store:             new SupabaseStore(),
+  secret:            config.SESSION_SECRET || 'fallback-secret',
+  resave:            false,
+  saveUninitialized: false,
+  rolling:           true,
+  cookie: {
+    secure:   process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    maxAge:   7 * 24 * 60 * 60 * 1000
+  }
+}));
+
+// ── 3. MAINTENANCE ───────────────────────────────────────────
 async function isMaintenanceMode() {
   const { data } = await supabase
     .from('site_config').select('value').eq('key', 'maintenance_mode').single();
   return data?.value === 'true';
 }
+
+app.get('/maintenance', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+});
 
 app.use(async (req, res, next) => {
   const bypass = [
@@ -133,7 +142,7 @@ app.use(async (req, res, next) => {
   const maintenance = await isMaintenanceMode();
   if (!maintenance) return next();
 
-  const user = req.session.user;
+  const user    = req.session.user;
   if (!user) return res.redirect('/maintenance');
 
   const isStaff = STAFF_ROLE_IDS.some(id => user.roles.includes(id));
@@ -145,27 +154,13 @@ app.use(async (req, res, next) => {
 
 app.get('/api/maintenance-status', async (req, res) => {
   const maintenance = await isMaintenanceMode();
-  const user = req.session.user;
+  const user    = req.session.user;
   const isStaff = user && STAFF_ROLE_IDS.some(id => user.roles.includes(id));
   const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
   res.json({ maintenance, isStaff: !!(isStaff || isAdmin) });
 });
 
-app.use(session({
-  store:             new SupabaseStore(),
-  secret:            config.SESSION_SECRET || 'fallback-secret',
-  resave:            false,
-  saveUninitialized: false,
-  rolling:           true,
-  cookie: {
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge:   7 * 24 * 60 * 60 * 1000  // 7 jours
-  }
-}));
-
-// ── HELPERS SUPABASE ──────────────────────────────────────────
-
+// ── 4. HELPERS SUPABASE ───────────────────────────────────────
 async function getSiteConfig() {
   const { data, error } = await supabase.from('site_config').select('key, value');
   if (error) throw error;
@@ -208,11 +203,12 @@ function formatPrice(amount) {
 function formatData(site, categories, mods, promotions, discordRoles) {
   return {
     site: {
-      title:        site.title        || '',
-      subtitle:     site.subtitle     || '',
-      discordUrl:   site.discordUrl   || '',
-      announcement: site.announcement || '',
-      heroTagline:  site.heroTagline  || ''
+      title:            site.title            || '',
+      subtitle:         site.subtitle         || '',
+      discordUrl:       site.discordUrl       || '',
+      announcement:     site.announcement     || '',
+      heroTagline:      site.heroTagline      || '',
+      maintenance_mode: site.maintenance_mode || 'false'
     },
     categories,
     mods: mods.map(m => ({
@@ -246,7 +242,7 @@ function formatData(site, categories, mods, promotions, discordRoles) {
   };
 }
 
-// ── MIDDLEWARE ADMIN ──────────────────────────────────────────
+// ── 5. MIDDLEWARE ADMIN ───────────────────────────────────────
 function requireAdmin(req, res, next) {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: 'Non connecté. Connectez-vous via Discord.' });
@@ -255,8 +251,7 @@ function requireAdmin(req, res, next) {
   res.status(403).json({ error: "Accès refusé. Vous n'avez pas les droits admin." });
 }
 
-// ── DISCORD OAUTH2 ────────────────────────────────────────────
-
+// ── 6. DISCORD OAUTH2 ─────────────────────────────────────────
 app.get('/auth/discord', (req, res) => {
   const params = new URLSearchParams({
     client_id:     config.CLIENT_ID,
@@ -292,7 +287,6 @@ app.get('/auth/discord/callback', async (req, res) => {
 
     let memberRoles = [];
 
-    // Ajouter automatiquement l'utilisateur au serveur Discord
     try {
       await fetch(
         `https://discord.com/api/guilds/${config.GUILD_ID}/members/${userData.id}`,
@@ -310,7 +304,6 @@ app.get('/auth/discord/callback', async (req, res) => {
       console.warn('Impossible dajouter au serveur Discord:', e.message);
     }
 
-    // Récupérer les rôles du membre
     try {
       const memberRes  = await fetch(
         `https://discord.com/api/users/@me/guilds/${config.GUILD_ID}/member`,
@@ -341,28 +334,27 @@ app.get('/auth/discord/callback', async (req, res) => {
 });
 
 app.post('/auth/logout', (req, res) => {
-  req.session.user = null;
+  req.session.user    = null;
   req.session.isAdmin = false;
   res.json({ success: true });
 });
 
-// ── PROTECTION /admin ────────────────────────────────────────
+// ── 7. PROTECTION /admin ──────────────────────────────────────
 app.get('/admin', (req, res, next) => {
-  const user = req.session.user;
-  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-  if (isAdmin) return next(); // laisser Express servir le fichier statique
-  res.status(404).send('404 - Page non trouvée');
-});
-
-app.get('/admin/', (req, res, next) => {
-  const user = req.session.user;
+  const user    = req.session.user;
   const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
   if (isAdmin) return next();
   res.status(404).send('404 - Page non trouvée');
 });
 
-// ── API PUBLIQUE ──────────────────────────────────────────────
+app.get('/admin/', (req, res, next) => {
+  const user    = req.session.user;
+  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  if (isAdmin) return next();
+  res.status(404).send('404 - Page non trouvée');
+});
 
+// ── 8. API PUBLIQUE ───────────────────────────────────────────
 app.get('/api/public', async (req, res) => {
   try {
     const [site, categories, mods, promotions, discordRoles] = await Promise.all([
@@ -389,21 +381,33 @@ app.get('/api/user', async (req, res) => {
       }
     }
     const isAdmin = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-    res.json({ connected: true, id: user.id, username: user.username, avatar: user.avatar, discount: bestDiscount, roleName: appliedRole, roleColor, isAdmin });
+    res.json({
+      connected: true,
+      id:        user.id,
+      username:  user.username,
+      avatar:    user.avatar,
+      discount:  bestDiscount,
+      roleName:  appliedRole,
+      roleColor,
+      isAdmin
+    });
   } catch (err) {
     console.error('Erreur /api/user:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// ── API ADMIN ─────────────────────────────────────────────────
-
+// ── 9. API ADMIN ──────────────────────────────────────────────
 app.post('/api/admin/login', (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: "Connectez-vous d'abord via Discord." });
   const hasAdminRole = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-  if (hasAdminRole) { req.session.isAdmin = true; res.json({ success: true, username: user.username }); }
-  else res.status(403).json({ error: "Vous n'avez pas le rôle requis." });
+  if (hasAdminRole) {
+    req.session.isAdmin = true;
+    res.json({ success: true, username: user.username });
+  } else {
+    res.status(403).json({ error: "Vous n'avez pas le rôle requis." });
+  }
 });
 
 app.post('/api/admin/logout', (req, res) => {
@@ -442,25 +446,21 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       const toDeleteCats = (existingCats || []).map(c => c.id).filter(id => !d.categories.find(c => c.id === id));
       if (toDeleteCats.length > 0) await supabase.from('categories').delete().in('id', toDeleteCats);
       for (const cat of d.categories) {
-        await supabase.from('categories').upsert({ id: cat.id, name: cat.name, color: cat.color || '#ffffff', icon: cat.icon || '📦', position: cat.position ?? 0 }, { onConflict: 'id' });
+        await supabase.from('categories').upsert({
+          id: cat.id, name: cat.name, color: cat.color || '#ffffff',
+          icon: cat.icon || '📦', position: cat.position ?? 0
+        }, { onConflict: 'id' });
       }
     }
     if (d.mods) {
-      // Récupérer les IDs existants en DB
       const { data: existingMods } = await supabase.from('mods').select('id');
       const existingIds = (existingMods || []).map(m => m.id);
       const newIds      = d.mods.map(m => m.id);
+      const toDelete    = existingIds.filter(id => !newIds.includes(id));
+      if (toDelete.length > 0) await supabase.from('mods').delete().in('id', toDelete);
 
-      // Supprimer uniquement les mods qui ont été retirés de la liste
-      const toDelete = existingIds.filter(id => !newIds.includes(id));
-      if (toDelete.length > 0) {
-        await supabase.from('mods').delete().in('id', toDelete);
-      }
-
-      // Upsert chaque mod
       for (const mod of d.mods) {
-        console.log(`💾 Sauvegarde mod "${mod.name}" — id: ${mod.id}`);
-        const { data: upsertData, error: upsertError } = await supabase.from('mods').upsert({
+        const { error: upsertError } = await supabase.from('mods').upsert({
           id:          mod.id,
           name:        mod.name,
           category:    mod.category,
@@ -472,7 +472,7 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
           visible:     mod.visible     !== false,
           position:    mod.position    ?? 0
         }, { onConflict: 'id' });
-        if (upsertError) console.error('❌ Erreur upsert mod:', upsertError.message, upsertError.details);
+        if (upsertError) console.error('❌ Erreur upsert mod:', upsertError.message);
         else console.log('✅ Mod sauvegardé:', mod.name);
       }
     }
@@ -482,10 +482,14 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       if (toDeletePromos.length > 0) await supabase.from('promotions').delete().in('id', toDeletePromos);
       for (const promo of d.promotions) {
         await supabase.from('promotions').upsert({
-          id: promo.id, name: promo.name, description: promo.description || '',
-          discount_percent: promo.discountPercent || 0, end_date: promo.endDate,
+          id:                  promo.id,
+          name:                promo.name,
+          description:         promo.description       || '',
+          discount_percent:    promo.discountPercent   || 0,
+          end_date:            promo.endDate,
           apply_to_categories: promo.applyToCategories || [],
-          active: promo.active !== false, color: promo.color || '#cc0000'
+          active:              promo.active !== false,
+          color:               promo.color  || '#cc0000'
         }, { onConflict: 'id' });
       }
     }
@@ -494,7 +498,12 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       const toDeleteRoles = (existingRoles || []).map(r => r.role_id).filter(id => !d.discordRoles.find(r => r.roleId === id));
       if (toDeleteRoles.length > 0) await supabase.from('discord_roles').delete().in('role_id', toDeleteRoles);
       for (const role of d.discordRoles) {
-        await supabase.from('discord_roles').upsert({ role_id: role.roleId, role_name: role.roleName, discount: role.discount || 0, color: role.color || '#ffffff' }, { onConflict: 'role_id' });
+        await supabase.from('discord_roles').upsert({
+          role_id:   role.roleId,
+          role_name: role.roleName,
+          discount:  role.discount || 0,
+          color:     role.color    || '#ffffff'
+        }, { onConflict: 'role_id' });
       }
     }
     res.json({ success: true, message: 'Données sauvegardées dans Supabase !' });
@@ -504,8 +513,7 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
   }
 });
 
-// ── API COMMANDE — Création ticket Discord ────────────────────
-
+// ── 10. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
   const { items, totalPrice, discordUser } = req.body;
 
@@ -517,7 +525,6 @@ app.post('/api/order', async (req, res) => {
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
 
-    // Chercher le membre Discord
     let member = null;
     if (discordUser?.id) {
       try { member = await guild.members.fetch(discordUser.id); } catch (e) {}
@@ -533,7 +540,7 @@ app.post('/api/order', async (req, res) => {
 
     if (member) {
       permissionOverwrites.push({
-        id: member.id,
+        id:    member.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
       });
     }
@@ -554,13 +561,11 @@ app.post('/api/order', async (req, res) => {
     });
 
     const coreOption = req.body.coreOption || false;
-    console.log('📦 Commande reçue - coreOption:', coreOption);
-    console.log('📦 Premier item options:', JSON.stringify(items[0]?.options));
 
     const itemLines = items.map(item => {
-      const opts  = item.options || {};
-      const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
-      const total = (item.price + extra) * item.quantity;
+      const opts   = item.options || {};
+      const extra  = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
+      const total  = (item.price + extra) * item.quantity;
       const optStr = [
         opts.debadgage ? '🔧 Debadgage (+10€)' : '',
         opts.retexture ? '🎨 Retexture (+5€)'  : ''
@@ -568,10 +573,9 @@ app.post('/api/order', async (req, res) => {
       return `> 🔹 **${item.name}** — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`;
     }).join('\n');
 
-    const coreLines = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
-
-    const staffMentions  = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
-    const clientMention  = member ? `<@${member.id}>` : `**${username}**`;
+    const coreLines     = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
+    const staffMentions = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
+    const clientMention = member ? `<@${member.id}>` : `**${username}**`;
 
     await channel.send([
       `# 🛒 Nouvelle commande — ${new Date().toLocaleDateString('fr-FR')}`,
@@ -600,7 +604,6 @@ app.post('/api/order', async (req, res) => {
 });
 
 // ── DÉMARRAGE ─────────────────────────────────────────────────
-
 app.listen(PORT, () => {
   console.log('\n╔══════════════════════════════════════════╗');
   console.log('║           CAC\'S GTA V MODS               ║');
