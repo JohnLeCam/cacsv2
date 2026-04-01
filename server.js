@@ -4,6 +4,7 @@ const fetch       = require('node-fetch');
 const path        = require('path');
 const helmet      = require('helmet');
 const rateLimit   = require('express-rate-limit');
+const compression = require('compression');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
 
@@ -125,6 +126,9 @@ app.use(helmet({
   contentSecurityPolicy: false, // désactivé car on charge des fonts Google + iframes YouTube
   crossOriginEmbedderPolicy: false
 }));
+
+// Compression gzip/brotli — réduit la taille des réponses de 60-70%
+app.use(compression());
 
 // Rate limiting global — 200 req/15min par IP
 app.use(rateLimit({
@@ -345,10 +349,27 @@ app.get('/admin',  (req, res, next) => { const user = req.session.user; if (user
 app.get('/admin/', (req, res, next) => { const user = req.session.user; if (user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id))) return next(); res.status(404).send('404 - Page non trouvée'); });
 
 // ── 10. API PUBLIQUE ──────────────────────────────────────────
+
+// Cache en mémoire — 60 secondes
+let publicCache     = null;
+let publicCacheTime = 0;
+const CACHE_TTL     = 60 * 1000; // 60 secondes
+
+function invalidatePublicCache() {
+  publicCache     = null;
+  publicCacheTime = 0;
+}
+
 app.get('/api/public', async (req, res) => {
   try {
+    const now = Date.now();
+    if (publicCache && (now - publicCacheTime) < CACHE_TTL) {
+      return res.json(publicCache);
+    }
     const [site, categories, mods, promotions, discordRoles] = await Promise.all([getSiteConfig(), getCategories(), getMods(true), getPromotions(true), getDiscordRoles()]);
-    res.json(formatData(site, categories, mods, promotions, discordRoles));
+    publicCache     = formatData(site, categories, mods, promotions, discordRoles);
+    publicCacheTime = now;
+    res.json(publicCache);
   } catch (err) { console.error('Erreur /api/public:', err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
@@ -494,6 +515,7 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
       for (const role of d.discordRoles) await supabase.from('discord_roles').upsert({ role_id: role.roleId, role_name: role.roleName, discount: role.discount || 0, color: role.color || '#ffffff' }, { onConflict: 'role_id' });
     }
     res.json({ success: true });
+    invalidatePublicCache(); // invalide le cache après chaque sauvegarde admin
   } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
 });
 
