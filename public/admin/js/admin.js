@@ -92,15 +92,16 @@ async function loadOrders() {
       const itemNames = items.map(i => i.name).join(', ');
 
       return `
-        <div class="item-row order-row" data-status="${status}" style="flex-wrap:nowrap;gap:12px;align-items:center">
-          <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
-          <div style="flex:1;min-width:0">
+        <div class="order-row" data-status="${status}" style="display:grid;grid-template-columns:12px 1fr 100px 120px 160px;gap:16px;align-items:center;padding:14px 18px;background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);transition:border-color 0.2s">
+          <div style="width:10px;height:10px;border-radius:50%;background:${color}"></div>
+          <div style="min-width:0">
             <div style="font-size:0.92rem;font-weight:700;color:var(--white)">${esc(order.discord_username || 'Visiteur')}</div>
-            <div style="font-size:0.75rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">${date} · #${esc(order.ticket_channel || '')}</div>
-            <div style="font-size:0.78rem;color:var(--grey-l);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:300px">${esc(itemNames)}</div>
+            <div style="font-size:0.72rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">${date}</div>
+            <div style="font-size:0.75rem;color:var(--grey-l);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(itemNames)}</div>
+            <div style="font-size:0.7rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">#${esc(order.ticket_channel || '')}</div>
           </div>
-          <span style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);flex-shrink:0;white-space:nowrap">${formatEUR(order.total_price)}</span>
-          <span class="item-badge" style="color:${color};border-color:${color}40;background:${color}12;font-family:var(--mono);font-size:0.68rem;flex-shrink:0;white-space:nowrap">${label}</span>
+          <div style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);text-align:right">${formatEUR(order.total_price)}</div>
+          <span style="display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.68rem;padding:4px 10px;border-radius:20px;color:${color};border:1px solid ${color}40;background:${color}12;white-space:nowrap">${label}</span>
           <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
             <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
             <option value="processing" ${status==='processing' ? 'selected' : ''}>🔵 En cours</option>
@@ -127,7 +128,7 @@ function filterOrders(status, btn) {
   document.querySelectorAll('.order-filter-btn').forEach(b => { b.classList.remove('btn-red'); b.classList.add('btn-ghost'); });
   btn.classList.add('btn-red'); btn.classList.remove('btn-ghost');
   document.querySelectorAll('.order-row').forEach(row => {
-    row.style.display = (status === 'all' || row.dataset.status === status) ? 'flex' : 'none';
+    row.style.display = (status === 'all' || row.dataset.status === status) ? 'grid' : 'none';
   });
 }
 
