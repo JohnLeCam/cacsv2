@@ -658,9 +658,12 @@ async function saveConfig() {
   showToast('Configuration sauvegardée !');
 }
 
-function toggleMaintenance() {
+async function toggleMaintenance() {
   document.getElementById('toggleMaintenance').classList.toggle('on');
-  updateMaintenanceStatus(isToggleOn('toggleMaintenance'));
+  const isOn = isToggleOn('toggleMaintenance');
+  updateMaintenanceStatus(isOn);
+  data.site = { ...data.site, maintenance_mode: isOn ? 'true' : 'false' };
+  await saveAll();
 }
 
 function updateMaintenanceStatus(isOn) {
