@@ -590,7 +590,12 @@ app.post('/api/order', async (req, res) => {
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
 });
 
-// ── 13. SITEMAP DYNAMIQUE ─────────────────────────────────────
+// ── 13. CGVU ─────────────────────────────────────────────────
+app.get('/cgvu', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cgvu.html'));
+});
+
+// ── 14. SITEMAP DYNAMIQUE ─────────────────────────────────────
 app.get('/sitemap.xml', async (req, res) => {
   try {
     const mods  = await getMods(true);
