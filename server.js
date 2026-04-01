@@ -346,7 +346,7 @@ app.get('/api/user', async (req, res) => {
       }
     }
     const isAdmin = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-    res.json({ connected: true, username: user.username, avatar: user.avatar, discount: bestDiscount, roleName: appliedRole, roleColor, isAdmin });
+    res.json({ connected: true, id: user.id, username: user.username, avatar: user.avatar, discount: bestDiscount, roleName: appliedRole, roleColor, isAdmin });
   } catch (err) {
     console.error('Erreur /api/user:', err);
     res.status(500).json({ error: 'Erreur serveur' });
