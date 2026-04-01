@@ -131,6 +131,43 @@ function showMaintenanceBanner() {
   document.body.style.paddingBottom = '45px';
 }
 
+// ─── Helpers YouTube ─────────────────────────────────────────
+function isYoutube(url) {
+  return /youtube\.com|youtu\.be/.test(url || '');
+}
+
+function getYoutubeId(url) {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
+function buildMediaSlide(url, alt, cssClass) {
+  if (isYoutube(url)) {
+    const id = getYoutubeId(url);
+    if (!id) return '';
+    return `<div class="${cssClass}" style="position:relative;">
+      <iframe
+        src="https://www.youtube.com/embed/${id}?rel=0&modestbranding=1"
+        frameborder="0"
+        allowfullscreen
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        style="width:100%;height:100%;display:block;border:none;position:absolute;top:0;left:0">
+      </iframe>
+    </div>`;
+  }
+  return `<div class="${cssClass}">
+    <img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" loading="lazy">
+  </div>`;
+}
+
+function buildYoutubeDot(url, index, activeClass, onclickFn) {
+  if (isYoutube(url)) {
+    return `<div class="${activeClass}" onclick="${onclickFn}" title="▶ Vidéo" style="background:#ff0000;width:8px;height:8px;border-radius:2px;">▶</div>`;
+  }
+  return `<div class="${activeClass}" onclick="${onclickFn}"></div>`;
+}
+
+// ─── Config du site ──────────────────────────────────────────
 function applySiteConfig() {
   if (!siteData?.site) return;
   const s = siteData.site;
@@ -144,9 +181,7 @@ function applySiteConfig() {
   if (subtitle && s.subtitle) subtitle.textContent = s.subtitle;
 
   const links = document.querySelectorAll('[id="discordCta"], #heroDiscordBtn');
-  links.forEach(el => {
-    if (s.discordUrl) el.href = s.discordUrl;
-  });
+  links.forEach(el => { if (s.discordUrl) el.href = s.discordUrl; });
 
   if (s.announcement && s.announcement.trim() !== '') {
     const banner = document.getElementById('announcement');
@@ -158,6 +193,7 @@ function applySiteConfig() {
   }
 }
 
+// ─── Navbar Auth ─────────────────────────────────────────────
 function renderNavAuth() {
   const navAuth = document.getElementById('navAuth');
   if (!navAuth) return;
@@ -189,6 +225,7 @@ function renderNavAuth() {
   }
 }
 
+// ─── Promotions ───────────────────────────────────────────────
 function renderPromos() {
   const banner = document.getElementById('promoBanner');
   const track  = document.getElementById('promoBannerTrack');
@@ -196,10 +233,7 @@ function renderPromos() {
 
   const promos = siteData?.promotions || [];
 
-  if (promos.length === 0) {
-    banner.style.display = 'none';
-    return;
-  }
+  if (promos.length === 0) { banner.style.display = 'none'; return; }
 
   banner.style.display = 'block';
 
@@ -243,10 +277,10 @@ function startBannerCountdown(promoId, endDateStr) {
     const els  = document.querySelectorAll(`[id="${elId}"]`);
     const diff = endDate - new Date();
     if (diff <= 0) { els.forEach(el => el.textContent = 'Expirée'); return; }
-    const j = Math.floor(diff / 86400000);
-    const h = Math.floor((diff % 86400000) / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
+    const j   = Math.floor(diff / 86400000);
+    const h   = Math.floor((diff % 86400000) / 3600000);
+    const m   = Math.floor((diff % 3600000) / 60000);
+    const s   = Math.floor((diff % 60000) / 1000);
     const pad = n => String(n).padStart(2, '0');
     const txt = j > 0 ? `${j}j ${pad(h)}h ${pad(m)}m` : `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
     els.forEach(el => el.textContent = txt);
@@ -255,6 +289,7 @@ function startBannerCountdown(promoId, endDateStr) {
   setInterval(update, 1000);
 }
 
+// ─── Filtres Catégories ──────────────────────────────────────
 function renderCategoryFilters() {
   const container = document.getElementById('categoryFilters');
   if (!container || !siteData?.categories) return;
@@ -312,14 +347,13 @@ function setFilter(cat, color) {
   renderMods();
 }
 
+// ─── Grille des mods ─────────────────────────────────────────
 function renderMods() {
   const grid = document.getElementById('modsGrid');
   if (!grid || !siteData?.mods) return;
 
   let mods = siteData.mods;
-  if (activeFilter !== 'all') {
-    mods = mods.filter(m => m.category === activeFilter);
-  }
+  if (activeFilter !== 'all') mods = mods.filter(m => m.category === activeFilter);
 
   if (mods.length === 0) {
     grid.innerHTML = `
@@ -366,22 +400,37 @@ function buildModCard(mod, index) {
   const catStyle = catColor ? `style="color:${catColor};border-color:${catColor}40;background:${catColor}12"` : '';
 
   const allImages = Array.isArray(mod.images) && mod.images.length > 0
-    ? mod.images
-    : (mod.image ? [mod.image] : []);
+    ? mod.images : (mod.image ? [mod.image] : []);
 
   let imageHTML;
   if (allImages.length === 0) {
     imageHTML = `<div class="mod-placeholder">${catIcon}<span>Image bientôt</span></div>`;
   } else if (allImages.length === 1) {
-    imageHTML = `<img src="${escapeHtml(allImages[0])}" alt="${escapeHtml(mod.name)}" loading="lazy">`;
+    // Slide unique
+    if (isYoutube(allImages[0])) {
+      const id = getYoutubeId(allImages[0]);
+      imageHTML = `<div style="position:relative;width:100%;height:100%;">
+        <iframe src="https://www.youtube.com/embed/${id}?rel=0&modestbranding=1"
+          frameborder="0" allowfullscreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;">
+        </iframe>
+      </div>`;
+    } else {
+      imageHTML = `<img src="${escapeHtml(allImages[0])}" alt="${escapeHtml(mod.name)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">`;
+    }
   } else {
     const cardId = 'carousel-' + mod.id;
-    const slides = allImages.map(img =>
-      `<div class="mod-carousel-slide"><img src="${escapeHtml(img)}" alt="${escapeHtml(mod.name)}" loading="lazy"></div>`
-    ).join('');
-    const dots = allImages.map((_, i) =>
-      `<div class="carousel-dot${i===0?' active':''}" onclick="setCarouselSlide('${cardId}',${i})"></div>`
-    ).join('');
+    const slides = allImages.map(img => buildMediaSlide(img, mod.name, 'mod-carousel-slide')).join('');
+    const dots   = allImages.map((url, i) => {
+      const activeClass = `carousel-dot${i===0?' active':''}`;
+      const onclick     = `setCarouselSlide('${cardId}',${i})`;
+      if (isYoutube(url)) {
+        return `<div class="${activeClass}" onclick="${onclick}" style="font-size:8px;line-height:6px;background:rgba(255,0,0,0.7);border-radius:2px;width:14px;height:6px;display:flex;align-items:center;justify-content:center;color:#fff;">▶</div>`;
+      }
+      return `<div class="${activeClass}" onclick="${onclick}"></div>`;
+    }).join('');
+
     imageHTML = `
       <div class="mod-carousel" id="${cardId}" data-current="0" data-total="${allImages.length}">
         <div class="mod-carousel-track">${slides}</div>
@@ -421,6 +470,7 @@ function buildModCard(mod, index) {
   `;
 }
 
+// ─── Carousel ────────────────────────────────────────────────
 function carouselGo(id, dir) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -440,6 +490,7 @@ function setCarouselSlide(id, index) {
   el.querySelectorAll('.carousel-dot').forEach((d, i) => d.classList.toggle('active', i === index));
 }
 
+// ─── Modal détail mod ────────────────────────────────────────
 let _allMods = [];
 
 function openModDetail(modId) {
@@ -459,16 +510,21 @@ function openModDetail(modId) {
   if (allImages.length === 0) {
     carouselHTML = `<div class="detail-carousel" style="display:flex;align-items:center;justify-content:center;font-size:3rem">${catIcon}</div>`;
   } else {
-    const slides = allImages.map(img =>
-      `<div class="detail-carousel-slide"><img src="${escapeHtml(img)}" alt="${escapeHtml(mod.name)}"></div>`
-    ).join('');
-    const dots = allImages.length > 1 ? allImages.map((_, i) =>
-      `<div class="detail-carousel-dot${i===0?' active':''}" onclick="setDetailSlide(${i})"></div>`
-    ).join('') : '';
+    const slides = allImages.map(img => buildMediaSlide(img, mod.name, 'detail-carousel-slide')).join('');
+    const dots   = allImages.length > 1 ? allImages.map((url, i) => {
+      const activeClass = `detail-carousel-dot${i===0?' active':''}`;
+      const onclick     = `setDetailSlide(${i})`;
+      if (isYoutube(url)) {
+        return `<div class="${activeClass}" onclick="${onclick}" style="font-size:8px;line-height:6px;background:rgba(255,0,0,0.7);border-radius:2px;width:14px;height:6px;display:flex;align-items:center;justify-content:center;color:#fff;">▶</div>`;
+      }
+      return `<div class="${activeClass}" onclick="${onclick}"></div>`;
+    }).join('') : '';
+
     const btns = allImages.length > 1 ? `
       <button class="detail-carousel-btn prev" onclick="detailCarouselGo(-1)">‹</button>
       <button class="detail-carousel-btn next" onclick="detailCarouselGo(+1)">›</button>
       <div class="detail-carousel-dots">${dots}</div>` : '';
+
     carouselHTML = `
       <div class="detail-carousel" id="detailCarousel" data-current="0" data-total="${allImages.length}">
         <div class="detail-carousel-track">${slides}</div>
@@ -627,7 +683,7 @@ function saveCart() {
 function toggleOption(modId, option) {
   const item = cart.find(i => i.id === modId);
   if (!item) return;
-  if (!item.options) item.options = { debadgage: false, retexture: false, core: false };
+  if (!item.options) item.options = { debadgage: false, retexture: false };
   item.options[option] = !item.options[option];
   saveCart();
 }
@@ -730,12 +786,18 @@ function renderCartItems() {
     const opts       = item.options || {};
     const extraPrice = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
     const totalItem  = (item.price + extraPrice) * item.quantity;
+
+    // Miniature panier : si YouTube, afficher thumbnail
+    const imgHTML = isYoutube(item.image)
+      ? `<img src="https://img.youtube.com/vi/${getYoutubeId(item.image)}/mqdefault.jpg" class="cart-item-img" onerror="this.style.display='none'">`
+      : item.image
+        ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">`
+        : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`;
+
     return `
     <div class="cart-item" id="cart-item-${item.id}">
       <div class="cart-item-top">
-        ${item.image
-          ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">`
-          : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`}
+        ${imgHTML}
         <div class="cart-item-info">
           <div class="cart-item-name">${escapeHtml(item.name)}</div>
           <div class="cart-item-price">${formatPrice(totalItem)}</div>
@@ -825,7 +887,7 @@ function openOrderModal() {
     </div>
   `;
 
-  const drawer     = document.getElementById('cartDrawer');
+  const drawer      = document.getElementById('cartDrawer');
   const cartOverlay = document.getElementById('cartOverlay');
   drawer.classList.remove('open');
   cartOverlay.classList.remove('open');
