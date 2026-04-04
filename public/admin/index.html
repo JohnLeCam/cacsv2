@@ -298,6 +298,11 @@
                 <div class="form-group full"><label>Sous-titre Hero</label><input type="text" id="cfg-subtitle" placeholder="Mods FiveM de qualité..."></div>
                 <div class="form-group full"><label>Lien Discord</label><input type="text" id="cfg-discordUrl" placeholder="https://discord.gg/..."></div>
                 <div class="form-group full"><label>Annonce (laisser vide pour masquer)</label><input type="text" id="cfg-announcement" placeholder="🔥 Grosse sortie ce vendredi !"></div>
+                <div class="form-group full">
+                  <label>ID Salon annonces Discord (pour les nouveaux mods)</label>
+                  <input type="text" id="cfg-announceChannelId" placeholder="Ex: 1489950181549015140" style="font-family:var(--mono)">
+                  <small style="color:var(--grey-m);font-size:0.72rem;margin-top:4px;display:block">Mode développeur Discord → clic droit sur le salon → "Copier l'identifiant"</small>
+                </div>
               </div>
               <hr class="sep">
               <div style="display:flex;gap:12px;justify-content:flex-end"><button class="btn btn-red" onclick="saveConfig()">💾 Sauvegarder</button></div>
@@ -410,6 +415,31 @@
         </div>
       </div>
       <div class="modal-footer"><button class="btn btn-ghost" onclick="closeRoleModal()">Annuler</button><button class="btn btn-red" onclick="saveRole()">💾 Sauvegarder</button></div>
+    </div>
+  </div>
+
+  <!-- MODALE ANNONCE MOD -->
+  <div class="modal-overlay" id="announceModal" onclick="if(event.target===this)closeModal('announceModal')">
+    <div class="modal" style="max-width:460px">
+      <div class="modal-header">
+        <span class="modal-title">📢 Annoncer sur Discord</span>
+        <button class="modal-close" onclick="closeModal('announceModal')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:rgba(200,16,46,0.06);border:1px solid rgba(200,16,46,0.2);border-radius:var(--r);padding:16px 18px;margin-bottom:20px">
+          <div style="font-size:0.78rem;font-family:var(--mono);color:var(--grey-m);margin-bottom:6px;letter-spacing:0.1em;text-transform:uppercase">Mod sélectionné</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--white)" id="announceModName">—</div>
+          <div style="font-size:0.85rem;font-family:var(--mono);color:var(--blue-light);margin-top:4px" id="announceModPrice">—</div>
+        </div>
+        <div style="font-size:0.88rem;color:var(--grey-l);line-height:1.7;margin-bottom:4px">
+          Cette action va <strong style="color:var(--white)">envoyer un embed Discord</strong> dans le salon d'annonces configuré et <strong style="color:var(--white)">pinger le rôle Nouveautés</strong>.<br><br>
+          ⚠️ Cette action est <strong style="color:var(--red)">irréversible</strong> — vérifie que le mod est bien en ligne avant de confirmer.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('announceModal')">Annuler</button>
+        <button class="btn btn-red" id="announceBtnConfirm" onclick="sendAnnounce()">📢 Envoyer sur Discord</button>
+      </div>
     </div>
   </div>
 

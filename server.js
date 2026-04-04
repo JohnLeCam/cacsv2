@@ -11,13 +11,6 @@ const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilde
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-app.use((req, res, next) => {
-  if (req.hostname === 'cacsgtavmods.fr') {
-    return res.redirect(301, 'https://www.cacsgtavmods.fr' + req.originalUrl);
-  }
-  next();
-});
-
 let config;
 try {
   config = require('./config/discord.config');
@@ -595,6 +588,63 @@ app.post('/api/order', async (req, res) => {
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
 
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
+});
+
+// ── API ANNONCE MOD ───────────────────────────────────────────
+app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Récupérer le mod
+    const { data: mod, error } = await supabase.from('mods').select('*').eq('id', id).single();
+    if (error || !mod) return res.status(404).json({ error: 'Mod introuvable' });
+
+    // Récupérer le salon d'annonce depuis la config
+    const { data: configRow } = await supabase.from('site_config').select('value').eq('key', 'announce_channel_id').single();
+    const channelId = configRow?.value || '1489950181549015140';
+
+    const guild = discordBot.guilds.cache.first();
+    if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
+
+    const channel = await guild.channels.fetch(channelId).catch(() => null);
+    if (!channel) return res.status(404).json({ error: `Salon introuvable (ID: ${channelId})` });
+
+    const price = parseFloat(mod.base_price);
+    const priceStr = (!price || price <= 0) ? 'Gratuit' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xc8102e)
+      .setTitle('NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !')
+      .setDescription([
+        `Un nouvel asset est disponible sur notre boutique :`,
+        `**[https://cacsgtavmods.fr/](https://cacsgtavmods.fr/)**`,
+        ``,
+        `Utilisez le lien ci-dessous pour consulter le nouvel asset mis en vente !`,
+        ``,
+        `N'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.`,
+        ``,
+        `En cas de besoin, le salon <#1773366849212> reste à votre disposition. Ce salon reste aussi utile pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
+      ].join('\n'))
+      .addFields(
+        { name: '🎮 Nom du mod', value: mod.name, inline: true },
+        { name: '💶 Prix',       value: priceStr, inline: true },
+      )
+      .setImage('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png')
+      .setFooter({ text: "Cac's GTAV Mods" })
+      .setTimestamp();
+
+    await channel.send({
+      content: `<@&1489946990405095495>`,
+      embeds: [embed]
+    });
+
+    console.log(`📢 Annonce envoyée pour le mod "${mod.name}"`);
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error('Erreur annonce mod:', err);
+    res.status(500).json({ error: 'Erreur envoi annonce : ' + err.message });
+  }
 });
 
 // ── 13. CGVU ─────────────────────────────────────────────────

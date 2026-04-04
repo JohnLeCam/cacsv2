@@ -249,6 +249,7 @@ function renderModsList() {
       ${mod.featured ? '<span class="item-badge" style="background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);font-family:var(--mono);font-size:0.7rem;padding:3px 10px;border-radius:20px">⭐ Vedette</span>' : ''}
       <span class="item-badge ${mod.visible ? 'badge-visible' : 'badge-hidden'}">${mod.visible ? 'Visible' : 'Masqué'}</span>
       <div class="item-actions">
+        <button class="btn-icon" onclick="openAnnounceModal(${i})" title="Annoncer sur Discord">📢</button>
         <button class="btn-icon" onclick="duplicateMod(${i})" title="Dupliquer">📋</button>
         <button class="btn-icon" onclick="openModModal(${i})" title="Modifier">✏️</button>
         <button class="btn-icon del" onclick="deleteMod(${i})" title="Supprimer">🗑️</button>
@@ -269,6 +270,41 @@ function onDrop(e, targetIndex) {
   saveAll(); renderModsList(); showToast('Ordre mis à jour !');
 }
 function onDragEnd(e) { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.item-row').forEach(r => r.classList.remove('drag-over')); dragSrcIndex = null; }
+
+function openAnnounceModal(index) {
+  const mod = data.mods[index];
+  if (!mod) return;
+  const price = mod.basePrice && mod.basePrice > 0
+    ? new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(mod.basePrice)
+    : 'Gratuit';
+
+  document.getElementById('announceModName').textContent  = mod.name;
+  document.getElementById('announceModPrice').textContent = price;
+  document.getElementById('announceBtnConfirm').dataset.modId = mod.id;
+  openModal('announceModal');
+}
+
+async function sendAnnounce() {
+  const btn   = document.getElementById('announceBtnConfirm');
+  const modId = btn.dataset.modId;
+  btn.disabled    = true;
+  btn.textContent = '⏳ Envoi...';
+  try {
+    const res = await fetch(`/api/admin/mods/${modId}/announce`, { method: 'POST' });
+    if (res.ok) {
+      closeModal('announceModal');
+      showToast('📢 Annonce envoyée sur Discord !');
+    } else {
+      const err = await res.json();
+      showToast(err.error || 'Erreur envoi annonce', true);
+    }
+  } catch (e) {
+    showToast('Erreur serveur', true);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '📢 Envoyer sur Discord';
+  }
+}
 
 function duplicateMod(index) {
   const original = data.mods[index];
@@ -409,11 +445,12 @@ function isValidColor(str) { return /^#[0-9a-fA-F]{3,6}$/.test(str); }
 // ─── CONFIG ───────────────────────────────────────────────────
 function loadConfigForm() {
   if (!data?.site) return;
-  document.getElementById('cfg-title').value        = data.site.title        || '';
-  document.getElementById('cfg-heroTagline').value  = data.site.heroTagline  || '';
-  document.getElementById('cfg-subtitle').value     = data.site.subtitle     || '';
-  document.getElementById('cfg-discordUrl').value   = data.site.discordUrl   || '';
-  document.getElementById('cfg-announcement').value = data.site.announcement || '';
+  document.getElementById('cfg-title').value              = data.site.title              || '';
+  document.getElementById('cfg-heroTagline').value        = data.site.heroTagline        || '';
+  document.getElementById('cfg-subtitle').value           = data.site.subtitle           || '';
+  document.getElementById('cfg-discordUrl').value         = data.site.discordUrl         || '';
+  document.getElementById('cfg-announcement').value       = data.site.announcement       || '';
+  document.getElementById('cfg-announceChannelId').value  = data.site.announce_channel_id || '';
   const isOn = data.site.maintenance_mode === 'true';
   setToggle('toggleMaintenance', isOn);
   updateMaintenanceStatus(isOn);
@@ -421,7 +458,16 @@ function loadConfigForm() {
 
 async function saveConfig() {
   const isOn = isToggleOn('toggleMaintenance');
-  data.site = { ...data.site, title: document.getElementById('cfg-title').value.trim(), heroTagline: document.getElementById('cfg-heroTagline').value.trim(), subtitle: document.getElementById('cfg-subtitle').value.trim(), discordUrl: document.getElementById('cfg-discordUrl').value.trim(), announcement: document.getElementById('cfg-announcement').value.trim(), maintenance_mode: isOn ? 'true' : 'false' };
+  data.site = {
+    ...data.site,
+    title:               document.getElementById('cfg-title').value.trim(),
+    heroTagline:         document.getElementById('cfg-heroTagline').value.trim(),
+    subtitle:            document.getElementById('cfg-subtitle').value.trim(),
+    discordUrl:          document.getElementById('cfg-discordUrl').value.trim(),
+    announcement:        document.getElementById('cfg-announcement').value.trim(),
+    announce_channel_id: document.getElementById('cfg-announceChannelId').value.trim(),
+    maintenance_mode:    isOn ? 'true' : 'false'
+  };
   await saveAll(); updateMaintenanceStatus(isOn); showToast('Configuration sauvegardée !');
 }
 
