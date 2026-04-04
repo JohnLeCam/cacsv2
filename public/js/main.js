@@ -18,6 +18,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       openModDetail(modParam);
     }
   }
+
+  // Gestion du bouton retour navigateur
+  window.addEventListener('popstate', (e) => {
+    const overlay = document.getElementById('modDetailOverlay');
+    if (e.state?.modId) {
+      if (!overlay.classList.contains('open')) openModDetail(e.state.modId);
+    } else {
+      if (overlay.classList.contains('open')) {
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+      }
+    }
+  });
 });
 
 async function loadAll() {
@@ -479,6 +492,9 @@ function openModDetail(modId) {
   const mod = _allMods.find(m => m.id === modId);
   if (!mod) return;
 
+  // Met à jour l'URL sans recharger la page
+  history.pushState({ modId }, '', `?mod=${modId}`);
+
   const catInfo  = siteData?.categories?.find(c => (c.id || c) === mod.category);
   const catName  = catInfo?.name  || mod.category;
   const catColor = catInfo?.color || null;
@@ -551,6 +567,8 @@ function openModDetail(modId) {
 function closeModDetail() {
   document.getElementById('modDetailOverlay').classList.remove('open');
   document.body.style.overflow = '';
+  // Restaure l'URL propre sans ?mod=
+  history.pushState({}, '', window.location.pathname);
 }
 
 function detailCarouselGo(dir) {
