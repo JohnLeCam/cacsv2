@@ -636,9 +636,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
     const images   = Array.isArray(mod.images) ? mod.images : [];
     const modImage = mod.image || images.find(url => !/youtube\.com|youtu\.be/.test(url)) || null;
 
-    if (modImage) embed.setThumbnail(modImage);
+    if (modImage) embed.setImage(modImage);
+    embed.setThumbnail('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png');
     embed
-      .setImage('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png')
       .setFooter({ text: "Cac's GTAV Mods" })
       .setTimestamp();
 
