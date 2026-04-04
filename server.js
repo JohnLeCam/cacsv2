@@ -632,13 +632,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
         { name: '💶 Prix',       value: `**${priceStr}**`,  inline: true },
       );
 
-    // Image principale du mod (première image non-YouTube, URL valide)
-    const images   = Array.isArray(mod.images) ? mod.images : [];
-    const rawImage = mod.image || images.find(url => !/youtube\.com|youtu\.be/.test(url)) || null;
-    const isValidUrl = (url) => { try { const u = new URL(url); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; } };
-    const modImage = rawImage && isValidUrl(rawImage) ? rawImage : null;
-
-    if (modImage) embed.setThumbnail(modImage);
+    // Image principale du mod — désactivée temporairement (URL invalide en base)
+    // const modImage = mod.image || null;
+    // if (modImage) embed.setThumbnail(modImage);
     embed
       .setImage('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png')
       .setFooter({ text: "Cac's GTAV Mods" })
