@@ -595,11 +595,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Récupérer le mod
     const { data: mod, error } = await supabase.from('mods').select('*').eq('id', id).single();
     if (error || !mod) return res.status(404).json({ error: 'Mod introuvable' });
 
-    // Récupérer le salon d'annonce depuis la config
     const { data: configRow } = await supabase.from('site_config').select('value').eq('key', 'announce_channel_id').single();
     const channelId = configRow?.value || '1489950181549015140';
 
@@ -609,32 +607,36 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
     const channel = await guild.channels.fetch(channelId).catch(() => null);
     if (!channel) return res.status(404).json({ error: `Salon introuvable (ID: ${channelId})` });
 
-    const price = parseFloat(mod.base_price);
-    const priceStr = (!price || price <= 0) ? 'Gratuit' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
+    const price      = parseFloat(mod.base_price);
+    const priceStr   = (!price || price <= 0) ? 'Gratuit' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
+    const modUrl     = `https://cacsgtavmods.fr/#${mod.id}`;
+    const shopUrl    = 'https://cacsgtavmods.fr/';
 
     const embed = new EmbedBuilder()
       .setColor(0xc8102e)
       .setTitle('NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !')
       .setDescription([
         `Un nouvel asset est disponible sur notre boutique :`,
-        `**[https://cacsgtavmods.fr/](https://cacsgtavmods.fr/)**`,
+        shopUrl,
+        ``,
+        `🔗 **Lien direct vers le mod :** ${modUrl}`,
         ``,
         `Utilisez le lien ci-dessous pour consulter le nouvel asset mis en vente !`,
         ``,
         `N'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.`,
         ``,
-        `En cas de besoin, le salon <#1773366849212> reste à votre disposition. Ce salon reste aussi utile pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
+        `En cas de besoin, notre salon de support reste à votre disposition pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
       ].join('\n'))
       .addFields(
-        { name: '🎮 Nom du mod', value: mod.name, inline: true },
-        { name: '💶 Prix',       value: priceStr, inline: true },
+        { name: '🎮 Nom du mod', value: mod.name,   inline: true },
+        { name: '💶 Prix',       value: priceStr,    inline: true },
       )
       .setImage('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png')
       .setFooter({ text: "Cac's GTAV Mods" })
       .setTimestamp();
 
     await channel.send({
-      content: `<@&1489946990405095495>`,
+      content: `<@&1489952306974949597>`,
       embeds: [embed]
     });
 
