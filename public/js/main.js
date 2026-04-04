@@ -325,16 +325,27 @@ function isNew(mod) {
 }
 
 // ─── Tri ─────────────────────────────────────────────────────
+function extractRef(name) {
+  const match = name.match(/\[REF[-–]([^\]]+)\]/i);
+  if (!match) return name;
+  // Sépare le préfixe lettres et le numéro : SP01 → ['SP', 1]
+  const ref   = match[1];
+  const parts = ref.match(/^([A-Za-z-]+)(\d+)$/);
+  if (!parts) return ref;
+  return parts[1].toLowerCase() + parts[2].padStart(6, '0');
+}
+
 function sortMods(mods) {
   const sort = document.getElementById('sortSelect')?.value || 'default';
   const arr  = [...mods];
   switch (sort) {
+    case 'ref-asc':    return arr.sort((a, b) => extractRef(a.name).localeCompare(extractRef(b.name)));
     case 'price-asc':  return arr.sort((a, b) => a.basePrice - b.basePrice);
     case 'price-desc': return arr.sort((a, b) => b.basePrice - a.basePrice);
     case 'newest':     return arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     case 'featured':   return arr.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     case 'name-asc':   return arr.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    default:           return arr;
+    default:           return arr.sort((a, b) => extractRef(a.name).localeCompare(extractRef(b.name)));
   }
 }
 
