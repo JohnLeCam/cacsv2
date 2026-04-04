@@ -7,6 +7,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavbarScroll();
   setupScrollAnimations();
   await loadAll();
+
+  // Ouvrir automatiquement un mod depuis l'URL ?mod=ID
+  const urlParams = new URLSearchParams(window.location.search);
+  const modParam  = urlParams.get('mod');
+  if (modParam) {
+    const mod = (siteData?.mods || []).find(m => m.id === modParam);
+    if (mod) {
+      _allMods = siteData.mods;
+      openModDetail(modParam);
+    }
+  }
 });
 
 async function loadAll() {

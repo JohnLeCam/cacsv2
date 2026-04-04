@@ -609,7 +609,7 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
 
     const price      = parseFloat(mod.base_price);
     const priceStr   = (!price || price <= 0) ? 'Gratuit' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
-    const modUrl     = `https://cacsgtavmods.fr/#${mod.id}`;
+    const modUrl     = `https://cacsgtavmods.fr/?mod=${mod.id}`;
     const shopUrl    = 'https://cacsgtavmods.fr/';
 
     const embed = new EmbedBuilder()
@@ -628,16 +628,24 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
         `En cas de besoin, notre salon de support reste à votre disposition pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
       ].join('\n'))
       .addFields(
-        { name: '🎮 Nom du mod', value: mod.name,   inline: true },
-        { name: '💶 Prix',       value: priceStr,    inline: true },
-      )
+        { name: '🎮 Nom du mod', value: `**${mod.name}**`,  inline: true },
+        { name: '💶 Prix',       value: `**${priceStr}**`,  inline: true },
+      );
+
+    // Image principale du mod (première image non-YouTube)
+    const images   = Array.isArray(mod.images) ? mod.images : [];
+    const modImage = mod.image || images.find(url => !/youtube\.com|youtu\.be/.test(url)) || null;
+
+    if (modImage) embed.setThumbnail(modImage);
+    embed
       .setImage('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png')
       .setFooter({ text: "Cac's GTAV Mods" })
       .setTimestamp();
 
     await channel.send({
       content: `<@&1489952306974949597>`,
-      embeds: [embed]
+      embeds: [embed],
+      allowedMentions: { roles: ['1489952306974949597'] }
     });
 
     console.log(`📢 Annonce envoyée pour le mod "${mod.name}"`);
