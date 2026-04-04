@@ -641,9 +641,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
       .setTimestamp();
 
     await channel.send({
-      content: `<@&1489952306974949597>`,
+      content: `<@&1417156785730621470>`,
       embeds: [embed],
-      allowedMentions: { roles: ['1489952306974949597'] }
+      allowedMentions: { roles: ['1417156785730621470'] }
     });
 
     console.log(`📢 Annonce envoyée pour le mod "${mod.name}"`);
