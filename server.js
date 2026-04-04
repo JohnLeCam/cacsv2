@@ -625,7 +625,7 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
         ``,
         `N'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.`,
         ``,
-        `En cas de besoin, notre salon de support reste à votre disposition pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
+        `En cas de besoin, notre salon <#1463513920680628309> reste à votre disposition pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
       ].join('\n'))
       .addFields(
         { name: '🎮 Nom du mod', value: `**${mod.name}**`,  inline: true },
