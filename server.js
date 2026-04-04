@@ -269,12 +269,14 @@ function formatPrice(amount) {
 function formatData(site, categories, mods, promotions, discordRoles) {
   return {
     site: {
-      title:            site.title            || '',
-      subtitle:         site.subtitle         || '',
-      discordUrl:       site.discordUrl       || '',
-      announcement:     site.announcement     || '',
-      heroTagline:      site.heroTagline      || '',
-      maintenance_mode: site.maintenance_mode || 'false'
+      title:               site.title               || '',
+      subtitle:            site.subtitle            || '',
+      discordUrl:          site.discordUrl          || '',
+      announcement:        site.announcement        || '',
+      heroTagline:         site.heroTagline         || '',
+      maintenance_mode:    site.maintenance_mode    || 'false',
+      announce_channel_id: site.announce_channel_id || '',
+      announce_role_id:    site.announce_role_id    || ''
     },
     categories,
     mods: mods.map(m => ({
