@@ -601,6 +601,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
     const { data: configRow } = await supabase.from('site_config').select('value').eq('key', 'announce_channel_id').single();
     const channelId = configRow?.value || '1489950181549015140';
 
+    const { data: roleRow } = await supabase.from('site_config').select('value').eq('key', 'announce_role_id').single();
+    const roleId = roleRow?.value || '1417156785730621470';
+
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
 
@@ -643,9 +646,9 @@ app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
       .setTimestamp();
 
     await channel.send({
-      content: `<@&1417156785730621470>`,
+      content: `<@&${roleId}>`,
       embeds: [embed],
-      allowedMentions: { roles: ['1417156785730621470'] }
+      allowedMentions: { roles: [roleId] }
     });
 
     console.log(`📢 Annonce envoyée pour le mod "${mod.name}"`);

@@ -451,6 +451,7 @@ function loadConfigForm() {
   document.getElementById('cfg-discordUrl').value         = data.site.discordUrl         || '';
   document.getElementById('cfg-announcement').value       = data.site.announcement       || '';
   document.getElementById('cfg-announceChannelId').value  = data.site.announce_channel_id || '';
+  document.getElementById('cfg-announceRoleId').value     = data.site.announce_role_id    || '';
   const isOn = data.site.maintenance_mode === 'true';
   setToggle('toggleMaintenance', isOn);
   updateMaintenanceStatus(isOn);
@@ -466,6 +467,7 @@ async function saveConfig() {
     discordUrl:          document.getElementById('cfg-discordUrl').value.trim(),
     announcement:        document.getElementById('cfg-announcement').value.trim(),
     announce_channel_id: document.getElementById('cfg-announceChannelId').value.trim(),
+    announce_role_id:    document.getElementById('cfg-announceRoleId').value.trim(),
     maintenance_mode:    isOn ? 'true' : 'false'
   };
   await saveAll(); updateMaintenanceStatus(isOn); showToast('Configuration sauvegardée !');
