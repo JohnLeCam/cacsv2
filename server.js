@@ -11,6 +11,13 @@ const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilde
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+app.use((req, res, next) => {
+  if (req.hostname === 'cacsgtavmods.fr') {
+    return res.redirect(301, 'https://www.cacsgtavmods.fr' + req.originalUrl);
+  }
+  next();
+});
+
 let config;
 try {
   config = require('./config/discord.config');
@@ -269,14 +276,12 @@ function formatPrice(amount) {
 function formatData(site, categories, mods, promotions, discordRoles) {
   return {
     site: {
-      title:               site.title               || '',
-      subtitle:            site.subtitle            || '',
-      discordUrl:          site.discordUrl          || '',
-      announcement:        site.announcement        || '',
-      heroTagline:         site.heroTagline         || '',
-      maintenance_mode:    site.maintenance_mode    || 'false',
-      announce_channel_id: site.announce_channel_id || '',
-      announce_role_id:    site.announce_role_id    || ''
+      title:            site.title            || '',
+      subtitle:         site.subtitle         || '',
+      discordUrl:       site.discordUrl       || '',
+      announcement:     site.announcement     || '',
+      heroTagline:      site.heroTagline      || '',
+      maintenance_mode: site.maintenance_mode || 'false'
     },
     categories,
     mods: mods.map(m => ({
@@ -485,6 +490,70 @@ app.delete('/api/admin/stats/reset', requireAdmin, async (req, res) => {
   catch (err) { res.status(500).json({ error: 'Erreur reset stats' }); }
 });
 
+// ── 📢 API ANNONCE DISCORD — NOUVEAU MOD ──────────────────────
+// Constantes de l'annonce Discord
+const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
+const ANNOUNCE_ROLE_ID    = '1489946990405095495';
+const SHOP_URL            = 'https://cacsgtavmods.fr/';
+const EMBED_BANNER_URL    = 'https://img.draftbot.fr/1773366849212-87a12e25b4502138.png';
+
+app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
+  const { modName, modPrice, modLink } = req.body;
+
+  // Validation
+  if (!modName) return res.status(400).json({ error: 'Nom du mod manquant.' });
+  if (!ANNOUNCE_CHANNEL_ID) {
+    return res.status(500).json({
+      error: 'Variable d\'environnement ANNOUNCE_CHANNEL_ID non configurée sur Railway.'
+    });
+  }
+
+  try {
+    // Récupération du salon Discord
+    const channel = await discordBot.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null);
+    if (!channel) {
+      return res.status(500).json({
+        error: `Salon Discord introuvable. Vérifiez ANNOUNCE_CHANNEL_ID (${ANNOUNCE_CHANNEL_ID}).`
+      });
+    }
+
+    // Construction de la description de l'embed
+    let description = `Un nouvel asset est disponible sur notre boutique :\n`;
+    description    += `**${SHOP_URL}**\n\n`;
+    if (modLink) {
+      description += `🔗 **[Voir le mod directement](${modLink})**\n\n`;
+    }
+    description += `Utilisez le lien ci-dessous pour consulter le nouvel asset mis en vente !\n\n`;
+    description += `N'oubliez pas de vous connecter avec Discord directement sur notre site `;
+    description += `(connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier `;
+    description += `et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.\n\n`;
+    description += `En cas de besoin, le salon **#🎫︱Creer-Ticket** reste à votre disposition. `;
+    description += `Ce salon reste aussi utile pour toute demande de partenariat ou toute commande privée, `;
+    description += `choisissez simplement le bouton qui correspond à votre demande.`;
+
+    // Construction de l'embed Discord
+    const announceEmbed = new EmbedBuilder()
+      .setColor(0x1abc9c)
+      .setTitle('NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !')
+      .setDescription(description)
+      .setImage(EMBED_BANNER_URL)
+      .setFooter({ text: "Cac's GTAV Mods" });
+
+    // Envoi du message avec ping du rôle + embed
+    await channel.send({
+      content: `<@&${ANNOUNCE_ROLE_ID}>`,
+      embeds:  [announceEmbed],
+    });
+
+    console.log(`📢 Annonce Discord envoyée pour le mod : "${modName}"`);
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error('❌ Erreur annonce Discord:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/save', requireAdmin, async (req, res) => {
   const d = req.body;
   try {
@@ -524,6 +593,11 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
 // ── 12. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
   const { items, totalPrice, discordUser } = req.body;
+
+  // 🔒 Connexion Discord obligatoire
+  if (!discordUser?.id || !discordUser?.username) {
+    return res.status(401).json({ error: 'Vous devez être connecté avec Discord pour passer commande.' });
+  }
 
   // Validation des inputs
   if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
@@ -590,76 +664,6 @@ app.post('/api/order', async (req, res) => {
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
 
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
-});
-
-// ── API ANNONCE MOD ───────────────────────────────────────────
-app.post('/api/admin/mods/:id/announce', requireAdmin, async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const { data: mod, error } = await supabase.from('mods').select('*').eq('id', id).single();
-    if (error || !mod) return res.status(404).json({ error: 'Mod introuvable' });
-
-    const { data: configRow } = await supabase.from('site_config').select('value').eq('key', 'announce_channel_id').single();
-    const channelId = configRow?.value || '1489950181549015140';
-
-    const { data: roleRow } = await supabase.from('site_config').select('value').eq('key', 'announce_role_id').single();
-    const roleId = roleRow?.value || '1417156785730621470';
-
-    const guild = discordBot.guilds.cache.first();
-    if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
-
-    const channel = await guild.channels.fetch(channelId).catch(() => null);
-    if (!channel) return res.status(404).json({ error: `Salon introuvable (ID: ${channelId})` });
-
-    const price      = parseFloat(mod.base_price);
-    const priceStr   = (!price || price <= 0) ? 'Gratuit' : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(price);
-    const modUrl     = `https://cacsgtavmods.fr/?mod=${mod.id}`;
-    const shopUrl    = 'https://cacsgtavmods.fr/';
-
-    const embed = new EmbedBuilder()
-      .setColor(0xc8102e)
-      .setTitle('NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !')
-      .setDescription([
-        `Un nouvel asset est disponible sur notre boutique :`,
-        shopUrl,
-        ``,
-        `🔗 **Lien direct vers le mod :** ${modUrl}`,
-        ``,
-        `Utilisez le lien ci-dessous pour consulter le nouvel asset mis en vente !`,
-        ``,
-        `N'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.`,
-        ``,
-        `En cas de besoin, notre salon <#1463513920680628309> reste à votre disposition pour toute demande de partenariat ou toute commande privée, choisissez simplement le bouton qui correspond à votre demande.`,
-      ].join('\n'))
-      .addFields(
-        { name: '🎮 Nom du mod', value: `**${mod.name}**`,  inline: true },
-        { name: '💶 Prix',       value: `**${priceStr}**`,  inline: true },
-      );
-
-    // Image principale du mod (première image non-YouTube)
-    const images   = Array.isArray(mod.images) ? mod.images : [];
-    const modImage = mod.image || images.find(url => !/youtube\.com|youtu\.be/.test(url)) || null;
-
-    if (modImage) embed.setImage(modImage);
-    embed.setThumbnail('https://img.draftbot.fr/1773366849212-87a12e25b4502138.png');
-    embed
-      .setFooter({ text: "Cac's GTAV Mods" })
-      .setTimestamp();
-
-    await channel.send({
-      content: `<@&${roleId}>`,
-      embeds: [embed],
-      allowedMentions: { roles: [roleId] }
-    });
-
-    console.log(`📢 Annonce envoyée pour le mod "${mod.name}"`);
-    res.json({ success: true });
-
-  } catch (err) {
-    console.error('Erreur annonce mod:', err);
-    res.status(500).json({ error: 'Erreur envoi annonce : ' + err.message });
-  }
 });
 
 // ── 13. CGVU ─────────────────────────────────────────────────

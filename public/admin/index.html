@@ -298,16 +298,6 @@
                 <div class="form-group full"><label>Sous-titre Hero</label><input type="text" id="cfg-subtitle" placeholder="Mods FiveM de qualité..."></div>
                 <div class="form-group full"><label>Lien Discord</label><input type="text" id="cfg-discordUrl" placeholder="https://discord.gg/..."></div>
                 <div class="form-group full"><label>Annonce (laisser vide pour masquer)</label><input type="text" id="cfg-announcement" placeholder="🔥 Grosse sortie ce vendredi !"></div>
-                <div class="form-group full">
-                  <label>ID Salon annonces Discord (pour les nouveaux mods)</label>
-                  <input type="text" id="cfg-announceChannelId" placeholder="Ex: 1489950181549015140" style="font-family:var(--mono)">
-                  <small style="color:var(--grey-m);font-size:0.72rem;margin-top:4px;display:block">Mode développeur Discord → clic droit sur le salon → "Copier l'identifiant"</small>
-                </div>
-                <div class="form-group full">
-                  <label>ID Rôle à mentionner lors des annonces</label>
-                  <input type="text" id="cfg-announceRoleId" placeholder="Ex: 1417156785730621470" style="font-family:var(--mono)">
-                  <small style="color:var(--grey-m);font-size:0.72rem;margin-top:4px;display:block">Mode développeur Discord → clic droit sur le rôle → "Copier l'identifiant"</small>
-                </div>
               </div>
               <hr class="sep">
               <div style="display:flex;gap:12px;justify-content:flex-end"><button class="btn btn-red" onclick="saveConfig()">💾 Sauvegarder</button></div>
@@ -423,28 +413,102 @@
     </div>
   </div>
 
-  <!-- MODALE ANNONCE MOD -->
-  <div class="modal-overlay" id="announceModal" onclick="if(event.target===this)closeModal('announceModal')">
-    <div class="modal" style="max-width:460px">
-      <div class="modal-header">
-        <span class="modal-title">📢 Annoncer sur Discord</span>
-        <button class="modal-close" onclick="closeModal('announceModal')">✕</button>
+  <!-- ══════════════════════════════════════════════════════════
+       📢 MODALE ANNONCE DISCORD — NOUVEAU MOD
+  ══════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="discordModal" style="z-index:10000">
+    <div class="modal" style="max-width:560px;border-top:3px solid #5865F2">
+
+      <!-- En-tête -->
+      <div class="modal-header" style="background:rgba(88,101,242,0.08)">
+        <span class="modal-title" style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:1.2rem">📢</span>
+          Annoncer sur Discord ?
+        </span>
+        <button class="modal-close" onclick="closeDiscordModal(true)">✕</button>
       </div>
+
       <div class="modal-body">
-        <div style="background:rgba(200,16,46,0.06);border:1px solid rgba(200,16,46,0.2);border-radius:var(--r);padding:16px 18px;margin-bottom:20px">
-          <div style="font-size:0.78rem;font-family:var(--mono);color:var(--grey-m);margin-bottom:6px;letter-spacing:0.1em;text-transform:uppercase">Mod sélectionné</div>
-          <div style="font-size:1rem;font-weight:700;color:var(--white)" id="announceModName">—</div>
-          <div style="font-size:0.85rem;font-family:var(--mono);color:var(--blue-light);margin-top:4px" id="announceModPrice">—</div>
+
+        <!-- Message d'intro -->
+        <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:1.1rem;flex-shrink:0">✅</span>
+          <div>
+            <div style="font-size:0.88rem;font-weight:700;color:var(--green);margin-bottom:2px">Mod sauvegardé avec succès !</div>
+            <div style="font-size:0.82rem;color:var(--grey-l)">
+              Voulez-vous envoyer une annonce sur votre serveur Discord pour notifier votre communauté ?
+            </div>
+          </div>
         </div>
-        <div style="font-size:0.88rem;color:var(--grey-l);line-height:1.7;margin-bottom:4px">
-          Cette action va <strong style="color:var(--white)">envoyer un embed Discord</strong> dans le salon d'annonces configuré et <strong style="color:var(--white)">pinger le rôle Nouveautés</strong>.<br><br>
-          ⚠️ Cette action est <strong style="color:var(--red)">irréversible</strong> — vérifie que le mod est bien en ligne avant de confirmer.
+
+        <!-- Aperçu style Discord -->
+        <div style="background:#313338;border-radius:8px;padding:16px 16px 8px;margin-bottom:16px">
+          <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.1em;color:#80848e;text-transform:uppercase;margin-bottom:14px">
+            Aperçu de l'embed Discord
+          </div>
+
+          <!-- Faux message bot -->
+          <div style="display:flex;gap:12px">
+            <!-- Avatar bot -->
+            <div style="width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#1abc9c,#16a085);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:15px;flex-shrink:0;font-family:var(--font)">C</div>
+            <div style="flex:1;min-width:0">
+              <!-- Nom + tag bot -->
+              <div style="font-size:0.82rem;margin-bottom:6px">
+                <strong style="color:#fff">Cac's GTAV Mods</strong>
+                <span style="font-size:0.6rem;background:#5865f2;color:#fff;padding:1px 5px;border-radius:3px;margin-left:5px;font-family:var(--mono)">APP</span>
+                <span style="font-size:0.7rem;color:#80848e;margin-left:6px;font-family:var(--mono)">Aujourd'hui</span>
+              </div>
+              <!-- Ping du rôle -->
+              <div style="font-size:0.78rem;color:#c9cdfb;background:rgba(88,101,242,0.2);display:inline-block;padding:1px 5px;border-radius:3px;margin-bottom:8px;font-family:var(--mono)">@Membres</div>
+              <!-- L'embed -->
+              <div style="background:#2b2d31;border-left:4px solid #1abc9c;border-radius:4px;overflow:hidden">
+                <div style="padding:12px 14px 10px">
+                  <div style="font-size:0.82rem;font-weight:700;color:#fff;margin-bottom:8px;letter-spacing:0.03em">
+                    NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !
+                  </div>
+                  <div style="font-size:0.75rem;color:#dbdee1;line-height:1.55">
+                    Un nouvel asset est disponible sur notre boutique :<br>
+                    <strong style="color:#fff">https://cacsgtavmods.fr/</strong><br><br>
+                    <span style="color:#b5bac1">Retrouvez</span>
+                    <strong style="color:#fff" id="discordPreviewModName">—</strong>
+                    <span id="discordPreviewPrice" style="color:#1abc9c;font-weight:700;margin-left:6px;font-family:var(--mono)"></span>
+                    <br><span style="color:#b5bac1">dans votre boutique.</span>
+                  </div>
+                </div>
+                <!-- Image bannière -->
+                <img
+                  src="https://img.draftbot.fr/1773366849212-87a12e25b4502138.png"
+                  style="width:100%;display:block;object-fit:cover"
+                  onerror="this.style.display='none'"
+                  alt="Bannière CAC's GTAV Mods"
+                />
+                <!-- Footer embed -->
+                <div style="padding:7px 14px;border-top:1px solid rgba(255,255,255,0.06);font-size:0.68rem;color:#80848e;font-family:var(--mono)">
+                  Cac's GTAV Mods
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
+
+        <!-- Avertissement -->
+        <p style="color:#80848e;font-size:0.75rem;font-family:var(--mono);text-align:center">
+          ⚠️ Le rôle <strong style="color:#c9cdfb">@Membres</strong> sera pingé · Action irréversible
+        </p>
+
+      </div><!-- /.modal-body -->
+
+      <!-- Footer : boutons d'action -->
+      <div class="modal-footer" style="justify-content:space-between">
+        <button class="btn btn-ghost" onclick="closeDiscordModal(true)" style="color:var(--grey-m)">
+          ⏭️ Passer sans envoyer
+        </button>
+        <button class="btn btn-red" id="btnSendDiscord" onclick="sendDiscordAnnounce()"
+                style="background:#5865F2;border:none;letter-spacing:0.05em">
+          🚀 Envoyer sur Discord
+        </button>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal('announceModal')">Annuler</button>
-        <button class="btn btn-red" id="announceBtnConfirm" onclick="sendAnnounce()">📢 Envoyer sur Discord</button>
-      </div>
+
     </div>
   </div>
 
