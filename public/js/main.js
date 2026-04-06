@@ -7,30 +7,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavbarScroll();
   setupScrollAnimations();
   await loadAll();
-
-  // Ouvrir automatiquement un mod depuis l'URL ?mod=ID
-  const urlParams = new URLSearchParams(window.location.search);
-  const modParam  = urlParams.get('mod');
-  if (modParam) {
-    const mod = (siteData?.mods || []).find(m => m.id === modParam);
-    if (mod) {
-      _allMods = siteData.mods;
-      openModDetail(modParam);
-    }
-  }
-
-  // Gestion du bouton retour navigateur
-  window.addEventListener('popstate', (e) => {
-    const overlay = document.getElementById('modDetailOverlay');
-    if (e.state?.modId) {
-      if (!overlay.classList.contains('open')) openModDetail(e.state.modId);
-    } else {
-      if (overlay.classList.contains('open')) {
-        overlay.classList.remove('open');
-        document.body.style.overflow = '';
-      }
-    }
-  });
 });
 
 async function loadAll() {
@@ -325,27 +301,16 @@ function isNew(mod) {
 }
 
 // ─── Tri ─────────────────────────────────────────────────────
-function extractRef(name) {
-  const match = name.match(/\[REF[-–]([^\]]+)\]/i);
-  if (!match) return name;
-  // Sépare le préfixe lettres et le numéro : SP01 → ['SP', 1]
-  const ref   = match[1];
-  const parts = ref.match(/^([A-Za-z-]+)(\d+)$/);
-  if (!parts) return ref;
-  return parts[1].toLowerCase() + parts[2].padStart(6, '0');
-}
-
 function sortMods(mods) {
   const sort = document.getElementById('sortSelect')?.value || 'default';
   const arr  = [...mods];
   switch (sort) {
-    case 'ref-asc':    return arr.sort((a, b) => extractRef(a.name).localeCompare(extractRef(b.name)));
     case 'price-asc':  return arr.sort((a, b) => a.basePrice - b.basePrice);
     case 'price-desc': return arr.sort((a, b) => b.basePrice - a.basePrice);
     case 'newest':     return arr.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     case 'featured':   return arr.sort((a, b) => (b.featured ? 1 : 0) - (a.featured ? 1 : 0));
     case 'name-asc':   return arr.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    default:           return arr.sort((a, b) => extractRef(a.name).localeCompare(extractRef(b.name)));
+    default:           return arr;
   }
 }
 
@@ -503,9 +468,6 @@ function openModDetail(modId) {
   const mod = _allMods.find(m => m.id === modId);
   if (!mod) return;
 
-  // Met à jour l'URL sans recharger la page
-  history.pushState({ modId }, '', `?mod=${modId}`);
-
   const catInfo  = siteData?.categories?.find(c => (c.id || c) === mod.category);
   const catName  = catInfo?.name  || mod.category;
   const catColor = catInfo?.color || null;
@@ -564,9 +526,10 @@ function openModDetail(modId) {
           <span class="mod-price ${totalDiscount > 0 ? 'discounted' : ''}">${formatPrice(price)}</span>
           ${totalDiscount > 0 ? `<span class="mod-discount-tag">-${totalDiscount}%</span>` : ''}
         </div>
-        <button onclick="addToCart('${mod.id}'); closeModDetail();" class="btn-buy" style="padding:12px 24px;font-size:0.85rem;border:none;cursor:pointer">
-          🛒 AJOUTER AU PANIER
-        </button>
+        <a href="${discordUrl}" target="_blank" class="btn-buy" style="padding:12px 24px;font-size:0.85rem">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057.1 18.082.112 18.105.131 18.12a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+          ACHETER SUR DISCORD
+        </a>
       </div>
     </div>`;
 
@@ -577,8 +540,6 @@ function openModDetail(modId) {
 function closeModDetail() {
   document.getElementById('modDetailOverlay').classList.remove('open');
   document.body.style.overflow = '';
-  // Restaure l'URL propre sans ?mod=
-  history.pushState({}, '', window.location.pathname);
 }
 
 function detailCarouselGo(dir) {
@@ -728,15 +689,100 @@ function openOrderModal() {
   const overlay = document.getElementById('orderModalOverlay');
   const body    = document.getElementById('orderModalBody');
   if (!overlay || !body) return;
+
   const coreChecked = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
-  const total = cart.reduce((sum, i) => { const opts = i.options||{}; const extra=(opts.debadgage?10:0)+(opts.retexture?5:0); return sum+(i.price+extra)*i.quantity; }, 0) + coreChecked;
-  const itemLines = cart.map(item => `<div class="order-recap-item"><span>${escapeHtml(item.name)} × ${item.quantity}</span><span>${formatPrice(item.price*item.quantity)}</span></div>`).join('');
-  const loginWarning = !userData?.connected
-    ? `<div class="order-info-box">⚠️ <strong>Tu n'es pas connecté via Discord.</strong><br>Le ticket sera créé mais tu ne seras pas ajouté automatiquement.<br><button onclick="loginDiscord()" style="margin-top:8px;background:var(--blue);border:none;color:#fff;padding:6px 14px;border-radius:4px;cursor:pointer;font-weight:600">Se connecter avec Discord</button></div>`
-    : `<div class="order-info-box">✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>Un ticket privé sera créé sur notre Discord avec toi et notre équipe.</div>`;
-  body.innerHTML = `<div class="order-recap">${itemLines}${coreChecked?`<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(10)}</span></div>`:''}<div class="order-recap-total"><span>Total</span><span>${formatPrice(total)}</span></div></div>${loginWarning}<div class="order-modal-actions"><button class="btn-ghost" onclick="closeOrderModal()">Annuler</button><button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">🎫 Créer le ticket Discord</button></div>`;
-  const drawer = document.getElementById('cartDrawer'), cartOverlay = document.getElementById('cartOverlay');
-  drawer.classList.remove('open'); cartOverlay.classList.remove('open');
+  const total       = cart.reduce((sum, i) => {
+    const opts = i.options || {};
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
+    return sum + (i.price + extra) * i.quantity;
+  }, 0) + coreChecked;
+
+  const itemLines = cart.map(item =>
+    `<div class="order-recap-item">
+       <span>${escapeHtml(item.name)} × ${item.quantity}</span>
+       <span>${formatPrice(item.price * item.quantity)}</span>
+     </div>`
+  ).join('');
+
+  const coreLineHTML = coreChecked
+    ? `<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(10)}</span></div>`
+    : '';
+
+  // ── CAS 1 : non connecté → bloquer la validation ──────────
+  if (!userData?.connected) {
+    body.innerHTML = `
+      <div class="order-recap">
+        ${itemLines}${coreLineHTML}
+        <div class="order-recap-total"><span>Total</span><span>${formatPrice(total)}</span></div>
+      </div>
+
+      <!-- Bloc de blocage Discord -->
+      <div style="
+        margin:20px 0 6px;
+        background:rgba(88,101,242,0.10);
+        border:1.5px solid rgba(88,101,242,0.45);
+        border-radius:8px;
+        padding:22px 20px;
+        text-align:center;
+      ">
+        <div style="font-size:2rem;margin-bottom:10px">🔐</div>
+        <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px">
+          Connexion Discord requise
+        </div>
+        <div style="font-size:0.83rem;color:#aaa;margin-bottom:18px;line-height:1.55">
+          Tu dois être connecté avec Discord pour valider ta commande.<br>
+          Une fois connecté, un ticket privé sera automatiquement créé<br>
+          avec toi et notre équipe.
+        </div>
+        <button
+          onclick="loginDiscord()"
+          style="
+            display:inline-flex;align-items:center;gap:10px;
+            background:#5865F2;border:none;color:#fff;
+            padding:12px 28px;border-radius:6px;
+            font-weight:700;font-size:0.92rem;
+            cursor:pointer;letter-spacing:0.04em;
+            transition:background 0.2s;
+          "
+          onmouseover="this.style.background='#4752c4'"
+          onmouseout="this.style.background='#5865F2'"
+        >
+          <svg width="20" height="20" viewBox="0 0 127.14 96.36" fill="#fff" xmlns="http://www.w3.org/2000/svg">
+            <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.25,60,73.25,53s5-12.74,11.44-12.74S96.23,46,96.12,53,91.08,65.69,84.69,65.69Z"/>
+          </svg>
+          Se connecter avec Discord
+        </button>
+        <div style="font-size:0.72rem;color:#666;margin-top:12px;font-family:var(--font-mono,monospace)">
+          Ton panier sera conservé après la connexion
+        </div>
+      </div>
+
+      <div class="order-modal-actions" style="margin-top:4px">
+        <button class="btn-ghost" onclick="closeOrderModal()">← Retour au panier</button>
+      </div>`;
+
+  // ── CAS 2 : connecté → flux normal ────────────────────────
+  } else {
+    body.innerHTML = `
+      <div class="order-recap">
+        ${itemLines}${coreLineHTML}
+        <div class="order-recap-total"><span>Total</span><span>${formatPrice(total)}</span></div>
+      </div>
+      <div class="order-info-box">
+        ✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>
+        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.
+      </div>
+      <div class="order-modal-actions">
+        <button class="btn-ghost" onclick="closeOrderModal()">Annuler</button>
+        <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">🎫 Créer le ticket Discord</button>
+      </div>`;
+  }
+
+  // Fermer le panier et ouvrir la modale
+  const drawer      = document.getElementById('cartDrawer');
+  const cartOverlay = document.getElementById('cartOverlay');
+  drawer.classList.remove('open');
+  cartOverlay.classList.remove('open');
   document.body.style.overflow = 'hidden';
   overlay.classList.add('open');
 }
