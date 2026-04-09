@@ -249,6 +249,7 @@ function renderModsList() {
       ${mod.featured ? '<span class="item-badge" style="background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);font-family:var(--mono);font-size:0.7rem;padding:3px 10px;border-radius:20px">⭐ Vedette</span>' : ''}
       <span class="item-badge ${mod.visible ? 'badge-visible' : 'badge-hidden'}">${mod.visible ? 'Visible' : 'Masqué'}</span>
       <div class="item-actions">
+        <button class="btn-icon" onclick="openDiscordModal(data.mods[${i}])" title="Annoncer sur Discord" style="color:#5865F2;border-color:rgba(88,101,242,0.35)">📢</button>
         <button class="btn-icon" onclick="duplicateMod(${i})" title="Dupliquer">📋</button>
         <button class="btn-icon" onclick="openModModal(${i})" title="Modifier">✏️</button>
         <button class="btn-icon del" onclick="deleteMod(${i})" title="Supprimer">🗑️</button>
@@ -326,7 +327,7 @@ async function saveMod() {
 
   if (isNew) {
     // 📢 Nouveau mod : proposer l'annonce Discord
-    openDiscordModal(mod);
+    openDiscordModal({ ...mod, _isNew: true });
   } else {
     showToast('Mod mis à jour !');
   }
@@ -349,9 +350,10 @@ function openDiscordModal(mod) {
 }
 
 function closeDiscordModal(skipped = true) {
+  const wasNew = _pendingAnnounceMod?._isNew || false;
   _pendingAnnounceMod = null;
   closeModal('discordModal');
-  if (skipped) showToast('Mod ajouté ! (annonce Discord ignorée)');
+  if (skipped && wasNew) showToast('Mod ajouté ! (annonce Discord ignorée)');
 }
 
 async function sendDiscordAnnounce() {
