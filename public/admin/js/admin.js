@@ -636,6 +636,91 @@ function esc(str) { if (!str) return ''; return String(str).replace(/&/g,'&amp;'
 function formatEUR(amount) { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount || 0); }
 function toDatetimeLocal(isoStr) { const d = new Date(isoStr), pad = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 
+// ─── LOGO SERVEUR DISCORD ────────────────────────────────────
+let _serverIconBase64 = null;
+
+function previewServerIcon(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  // Vérif taille max 10 Mo
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Image trop lourde (max 10 Mo)', true);
+    input.value = '';
+    return;
+  }
+
+  document.getElementById('iconFileName').textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _serverIconBase64 = e.target.result; // data:image/png;base64,....
+
+    // Affichage aperçu
+    const img         = document.getElementById('iconPreviewImg');
+    const placeholder = document.getElementById('iconPreviewPlaceholder');
+    const wrap        = document.getElementById('iconPreviewWrap');
+    img.src           = _serverIconBase64;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    wrap.style.borderColor    = '#5865F2';
+    wrap.style.borderStyle    = 'solid';
+
+    // Activer le bouton
+    const btn          = document.getElementById('btnUploadIcon');
+    btn.style.opacity  = '1';
+    btn.style.pointerEvents = 'auto';
+
+    // Reset status
+    const status = document.getElementById('iconUploadStatus');
+    status.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadServerIcon() {
+  if (!_serverIconBase64) return;
+  const btn    = document.getElementById('btnUploadIcon');
+  const status = document.getElementById('iconUploadStatus');
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Envoi en cours...';
+  status.style.display = 'none';
+
+  try {
+    const res    = await fetch('/api/admin/upload-logo', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ imageBase64: _serverIconBase64 })
+    });
+    const result = await res.json();
+
+    if (result.success) {
+      status.style.display = 'block';
+      status.style.color   = 'var(--green)';
+      status.textContent   = '✅ Logo mis à jour sur le site !';
+      showToast('Logo du site mis à jour !');
+      _serverIconBase64 = null;
+      document.getElementById('iconFileInput').value = '';
+    } else {
+      status.style.display = 'block';
+      status.style.color   = 'var(--red)';
+      status.textContent   = '❌ ' + (result.error || 'Erreur inconnue');
+      showToast('Erreur : ' + (result.error || 'Inconnue'), true);
+    }
+  } catch (e) {
+    status.style.display = 'block';
+    status.style.color   = 'var(--red)';
+    status.textContent   = '❌ Erreur de connexion au serveur';
+    showToast('Erreur serveur', true);
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '🚀 Mettre à jour le logo';
+    btn.style.opacity     = '1';
+    btn.style.pointerEvents = 'auto';
+  }
+}
+
 let _imageList = [];
 function loadImageManager(images) { _imageList = [...(images||[])]; renderImageManager(); }
 function getImageManagerUrls() { return [..._imageList]; }

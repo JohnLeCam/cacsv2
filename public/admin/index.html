@@ -307,6 +307,45 @@
             <div class="card-header"><span class="card-title">Catégories de mods</span></div>
             <div class="card-body"><p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Les catégories se gèrent dans l'onglet dédié.</p><button class="btn btn-ghost" onclick="switchTab('categories')">🏷️ Gérer les catégories →</button></div>
           </div>
+
+          <!-- LOGO DU SITE -->
+          <div class="card" style="border-color:rgba(88,101,242,0.3)">
+            <div class="card-header" style="background:rgba(88,101,242,0.05)">
+              <span class="card-title" style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:1.1rem">🖼️</span> Logo du site (logo.png)
+              </span>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:20px;line-height:1.6">
+                Remplace le logo rond affiché en haut à gauche du site.<br>
+                <span style="color:var(--grey-m);font-family:var(--mono);font-size:0.75rem">PNG recommandé · Format carré · Le fichier <strong>public/logo.png</strong> sera écrasé.</span>
+              </p>
+              <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex-shrink:0">
+                  <div id="iconPreviewWrap" style="width:88px;height:88px;border-radius:50%;background:var(--bg-2);border:2px dashed var(--border-b);display:flex;align-items:center;justify-content:center;overflow:hidden;transition:border-color 0.2s">
+                    <span id="iconPreviewPlaceholder" style="font-size:2rem">🖥️</span>
+                    <img id="iconPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover">
+                  </div>
+                  <span style="font-size:0.7rem;color:var(--grey-m);font-family:var(--mono)">Aperçu</span>
+                </div>
+                <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+                  <label style="text-transform:none;font-size:0.85rem;color:var(--grey-l);margin:0">Sélectionne une image (PNG ou JPG recommandé, carré)</label>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <label for="iconFileInput" style="display:inline-flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--border-b);color:var(--grey-l);padding:9px 16px;border-radius:var(--r);cursor:pointer;font-size:0.82rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s;white-space:nowrap;font-family:var(--font)" onmouseover="this.style.color='#fff';this.style.borderColor='rgba(255,255,255,0.2)'" onmouseout="this.style.color='var(--grey-l)';this.style.borderColor='var(--border-b)'">
+                      📂 Choisir un fichier
+                    </label>
+                    <input type="file" id="iconFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none" onchange="previewServerIcon(this)">
+                    <span id="iconFileName" style="font-size:0.78rem;color:var(--grey-m);font-family:var(--mono)">Aucun fichier</span>
+                  </div>
+                  <button class="btn" id="btnUploadIcon" onclick="uploadServerIcon()" style="align-self:flex-start;background:#5865F2;border:none;color:#fff;pointer-events:none;opacity:0.4;letter-spacing:0.05em">
+                    🚀 Mettre à jour le logo
+                  </button>
+                  <div id="iconUploadStatus" style="font-size:0.78rem;font-family:var(--mono);display:none"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- PARAMÈTRES -->

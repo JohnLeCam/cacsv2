@@ -281,7 +281,8 @@ function formatData(site, categories, mods, promotions, discordRoles) {
       discordUrl:       site.discordUrl       || '',
       announcement:     site.announcement     || '',
       heroTagline:      site.heroTagline      || '',
-      maintenance_mode: site.maintenance_mode || 'false'
+      maintenance_mode: site.maintenance_mode || 'false',
+      logo_url:         site.logo_url         || ''
     },
     categories,
     mods: mods.map(m => ({
@@ -490,7 +491,54 @@ app.delete('/api/admin/stats/reset', requireAdmin, async (req, res) => {
   catch (err) { res.status(500).json({ error: 'Erreur reset stats' }); }
 });
 
-// ── 📢 API ANNONCE DISCORD — NOUVEAU MOD ──────────────────────
+// ── 📢 API LOGO SITE — Supabase Storage ──────────────────────
+app.post('/api/admin/upload-logo', requireAdmin, async (req, res) => {
+  const { imageBase64 } = req.body;
+  if (!imageBase64) return res.status(400).json({ error: 'Aucune image fournie.' });
+  if (!imageBase64.startsWith('data:image/')) return res.status(400).json({ error: 'Format invalide.' });
+
+  try {
+    // Extraire le type MIME et les données base64
+    const matches  = imageBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!matches) return res.status(400).json({ error: 'Format base64 invalide.' });
+    const mimeType = matches[1];                          // ex: image/png
+    const ext      = mimeType.split('/')[1];              // ex: png
+    const buffer   = Buffer.from(matches[2], 'base64');
+    const fileName = `logo.${ext}`;
+
+    // Upload vers Supabase Storage (bucket "assets", fichier logo.png)
+    const { error: uploadError } = await supabase.storage
+      .from('assets')
+      .upload(fileName, buffer, {
+        contentType:  mimeType,
+        upsert:       true,        // écrase si déjà existant
+        cacheControl: '3600'
+      });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    // Récupérer l'URL publique
+    const { data: urlData } = supabase.storage
+      .from('assets')
+      .getPublicUrl(fileName);
+
+    const publicUrl = urlData.publicUrl;
+
+    // Sauvegarder l'URL dans site_config
+    await supabase.from('site_config').upsert(
+      { key: 'logo_url', value: publicUrl },
+      { onConflict: 'key' }
+    );
+
+    invalidatePublicCache();
+    console.log('🖼️  Logo mis à jour :', publicUrl);
+    res.json({ success: true, url: publicUrl });
+
+  } catch (err) {
+    console.error('❌ Erreur upload logo:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 // Constantes de l'annonce Discord
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
 const ANNOUNCE_ROLE_ID    = '1489946990405095495';

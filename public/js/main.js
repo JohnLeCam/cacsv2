@@ -135,6 +135,20 @@ function applySiteConfig() {
     const text   = document.getElementById('announceText');
     if (banner && text) { text.textContent = s.announcement; banner.style.display = 'flex'; }
   }
+  // ── Logo dynamique depuis Supabase ────────────────────────
+  if (s.logo_url && s.logo_url.trim() !== '') {
+    const url = s.logo_url;
+    const ids = ['logoNavImg', 'logoHeroImg', 'logoFooterImg'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.src = url;
+    });
+    // Favicon
+    const favicon = document.getElementById('faviconLink');
+    const apple   = document.getElementById('appleTouchLink');
+    if (favicon) favicon.href = url;
+    if (apple)   apple.href   = url;
+  }
 }
 
 // ─── Navbar Auth ─────────────────────────────────────────────
