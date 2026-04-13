@@ -1,3 +1,4 @@
+
 const express     = require('express');
 const session     = require('express-session');
 const fetch       = require('node-fetch');
@@ -212,7 +213,7 @@ app.get('/maintenance', (req, res) => {
 });
 
 app.use(async (req, res, next) => {
-  const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt','/api/visitor'];
+  const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt','/api/visitor','/cgvu','/legal'];
   const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
   if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) return next();
   const maintenance = await isMaintenanceMode();
@@ -831,10 +832,9 @@ app.post('/api/order', async (req, res) => {
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
 });
 
-// ── 13. CGVU ─────────────────────────────────────────────────
-app.get('/cgvu', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'cgvu.html'));
-});
+// ── 13. CGVU & LÉGAL ─────────────────────────────────────────
+app.get('/cgvu',  (req, res) => { res.sendFile(path.join(__dirname, 'public', 'cgvu.html')); });
+app.get('/legal', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'legal.html')); });
 
 // ── 14. SITEMAP DYNAMIQUE ─────────────────────────────────────
 app.get('/sitemap.xml', async (req, res) => {

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -337,7 +338,11 @@
       </div>
       <div class="footer-bottom">
         <span>© 2026 Cac's GTA V Mods — Tous droits réservés</span>
-        <span class="footer-note">Site vitrine uniquement · Vente via Discord</span>
+        <span class="footer-note" style="display:flex;gap:16px;align-items:center">
+          <a href="/cgvu" style="color:inherit;text-decoration:none;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">CGVU</a>
+          <a href="/legal" style="color:inherit;text-decoration:none;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">Mentions légales</a>
+          <a href="/legal#cookies" style="color:inherit;text-decoration:none;opacity:0.7;transition:opacity 0.2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">Cookies</a>
+        </span>
       </div>
     </div>
   </footer>
@@ -387,5 +392,64 @@
   </div>
 
   <script src="js/main.js"></script>
+
+  <!-- ══ BANNIÈRE COOKIES RGPD ══ -->
+  <div id="cookieBanner" style="
+    display:none;
+    position:fixed;bottom:0;left:0;right:0;z-index:9998;
+    background:#0d0d0f;border-top:1px solid #1c1c20;
+    padding:16px 24px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:20px;flex-wrap:wrap;
+    box-shadow:0 -4px 24px rgba(0,0,0,0.5);
+    font-family:'Rajdhani',sans-serif;
+  " id="cookieBanner">
+    <div style="flex:1;min-width:240px">
+      <div style="font-size:0.92rem;font-weight:700;color:#f0f0f0;margin-bottom:4px">🍪 Ce site utilise des cookies fonctionnels</div>
+      <div style="font-size:0.78rem;color:#666;line-height:1.5">
+        Uniquement pour le panier et la connexion Discord — aucune publicité, aucun traçage.
+        <a href="/legal" style="color:#4d9fff;text-decoration:none;margin-left:4px" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">En savoir plus →</a>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-shrink:0">
+      <button onclick="acceptCookies()" style="
+        background:var(--blue,#0057b8);border:none;color:#fff;
+        padding:9px 22px;border-radius:4px;cursor:pointer;
+        font-family:'Rajdhani',sans-serif;font-size:0.88rem;font-weight:700;
+        letter-spacing:0.06em;text-transform:uppercase;
+        transition:background 0.2s;
+      " onmouseover="this.style.background='#0068d9'" onmouseout="this.style.background='var(--blue,#0057b8)'">
+        ✓ Accepter
+      </button>
+      <button onclick="refuseCookies()" style="
+        background:transparent;border:1px solid #2a2a2e;color:#666;
+        padding:9px 18px;border-radius:4px;cursor:pointer;
+        font-family:'Rajdhani',sans-serif;font-size:0.82rem;font-weight:600;
+        letter-spacing:0.05em;text-transform:uppercase;
+        transition:all 0.2s;
+      " onmouseover="this.style.color='#fff';this.style.borderColor='#444'" onmouseout="this.style.color='#666';this.style.borderColor='#2a2a2e'">
+        Continuer sans accepter
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Gestion bannière cookies
+    (function() {
+      const consent = localStorage.getItem('cookieConsent');
+      if (!consent) {
+        document.getElementById('cookieBanner').style.display = 'flex';
+      }
+    })();
+    function acceptCookies() {
+      localStorage.setItem('cookieConsent', 'accepted');
+      document.getElementById('cookieBanner').style.display = 'none';
+    }
+    function refuseCookies() {
+      // On informe sans bloquer — les cookies fonctionnels restent nécessaires
+      localStorage.setItem('cookieConsent', 'refused');
+      document.getElementById('cookieBanner').style.display = 'none';
+    }
+  </script>
 </body>
 </html>
