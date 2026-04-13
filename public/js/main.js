@@ -1,4 +1,4 @@
-=let siteData     = null;
+let siteData     = null;
 let userData     = null;
 let activeFilter = 'all';
 let searchQuery  = '';
@@ -25,6 +25,7 @@ async function loadAll() {
     renderCategoryFilters();
     renderMods();
     await checkMaintenanceBanner();
+    sendVisitorPing(); // mise à jour avec le username Discord si connecté
 
   } catch (err) {
     console.error('Erreur chargement données:', err);
@@ -620,7 +621,7 @@ function escapeHtml(str) {
 // ═══════════════ PANIER ═══════════════
 let cart = JSON.parse(localStorage.getItem('cacsCart') || '[]');
 
-function saveCart() { localStorage.setItem('cacsCart', JSON.stringify(cart)); updateCartUI(); }
+function saveCart() { localStorage.setItem('cacsCart', JSON.stringify(cart)); updateCartUI(); sendVisitorPing(); }
 
 function toggleOption(modId, option) {
   const item = cart.find(i => i.id === modId);
@@ -835,6 +836,33 @@ async function confirmOrder() {
     if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
   }
 }
+
+// ═══════════════ TRACKING VISITEUR (temps réel admin) ═══════════════
+
+// ID unique par session navigateur
+let _visitorId = sessionStorage.getItem('_vid');
+if (!_visitorId) { _visitorId = 'v-' + Math.random().toString(36).slice(2) + Date.now().toString(36); sessionStorage.setItem('_vid', _visitorId); }
+
+function sendVisitorPing() {
+  const payload = {
+    visitorId: _visitorId,
+    username:  userData?.connected ? userData.username : null,
+    cart:      cart.map(i => ({ name: i.name, price: i.price })),
+    cartTotal: cart.reduce((s, i) => { const o = i.options||{}; return s + (i.price + (o.debadgage?10:0) + (o.retexture?5:0)) * i.quantity; }, 0)
+  };
+  fetch('/api/visitor/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true }).catch(() => {});
+}
+
+// Ping initial + toutes les 30 secondes
+sendVisitorPing();
+setInterval(sendVisitorPing, 30000);
+
+// Ping quand le panier change — appelé directement depuis saveCart ci-dessous
+
+// Prévenir le serveur quand le visiteur quitte la page
+window.addEventListener('beforeunload', () => {
+  navigator.sendBeacon('/api/visitor/leave', JSON.stringify({ visitorId: _visitorId }));
+});
 
 function showToast(msg) {
   let toast = document.getElementById('siteToast');
