@@ -212,7 +212,7 @@ app.get('/maintenance', (req, res) => {
 });
 
 app.use(async (req, res, next) => {
-  const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt'];
+  const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt','/api/visitor'];
   const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
   if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) return next();
   const maintenance = await isMaintenanceMode();
@@ -534,23 +534,34 @@ app.get('/api/admin/live-stream', requireAdmin, (req, res) => {
 // Heartbeat visiteur
 app.post('/api/visitor/ping', (req, res) => {
   const { visitorId, username, cart, cartTotal } = req.body;
-  if (!visitorId) return res.json({ ok: false });
+  if (!visitorId || typeof visitorId !== 'string' || visitorId.length > 64) return res.json({ ok: false });
+
+  // 🔒 Limite anti-DoS : max 500 visiteurs simultanés en mémoire
+  if (!liveVisitors.has(visitorId) && liveVisitors.size >= 500) return res.json({ ok: false });
+
+  // Sanitize les données avant stockage
+  const safeUsername  = username && typeof username === 'string' ? username.slice(0, 100) : null;
+  const safeCart      = Array.isArray(cart)
+    ? cart.slice(0, 20).map(i => ({ name: String(i.name || '').slice(0, 150), price: parseFloat(i.price) || 0 }))
+    : [];
+  const safeCartTotal = Math.min(parseFloat(cartTotal) || 0, 99999);
+
   const existing = liveVisitors.get(visitorId);
   const isNew    = !existing;
   liveVisitors.set(visitorId, {
-    username:    username || null,
-    cart:        Array.isArray(cart) ? cart : [],
-    cartTotal:   cartTotal || 0,
+    username:    safeUsername,
+    cart:        safeCart,
+    cartTotal:   safeCartTotal,
     lastSeen:    Date.now(),
     connectedAt: existing?.connectedAt || Date.now()
   });
   let event = null;
   if (isNew) {
-    const who = username || 'Visiteur anonyme';
+    const who = safeUsername || 'Visiteur anonyme';
     event = { type: 'join', label: `👤 ${who} a ouvert le site`, ts: Date.now() };
-  } else if (cart?.length > 0 && existing.cart?.length !== cart.length) {
-    const who  = username || 'Un visiteur';
-    const last = cart[cart.length - 1];
+  } else if (safeCart.length > 0 && existing.cart?.length !== safeCart.length) {
+    const who  = safeUsername || 'Un visiteur';
+    const last = safeCart[safeCart.length - 1];
     event = { type: 'cart', label: `🛒 ${who} a modifié son panier — ${last?.name || ''}`, ts: Date.now() };
   }
   broadcastLive({ type: 'visitor_update', visitors: getVisitorsList(), event });
@@ -682,7 +693,7 @@ app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
 app.post('/api/admin/save', requireAdmin, async (req, res) => {
   const d = req.body;
   try {
-    if (d.site) { for (const [key, value] of Object.entries(d.site)) await supabase.from('site_config').upsert({ key, value: String(value) }, { onConflict: 'key' }); }
+    if (d.site) { await Promise.all(Object.entries(d.site).map(([key, value]) => supabase.from('site_config').upsert({ key, value: String(value) }, { onConflict: 'key' }))); }
     if (d.categories?.length) {
       const { data: existingCats } = await supabase.from('categories').select('id');
       const toDeleteCats = (existingCats || []).map(c => c.id).filter(id => !d.categories.find(c => c.id === id));
@@ -717,21 +728,48 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
 
 // ── 12. API COMMANDE ──────────────────────────────────────────
 app.post('/api/order', async (req, res) => {
-  const { items, totalPrice, discordUser } = req.body;
+  const { items, discordUser } = req.body;
 
   // 🔒 Connexion Discord obligatoire
   if (!discordUser?.id || !discordUser?.username) {
     return res.status(401).json({ error: 'Vous devez être connecté avec Discord pour passer commande.' });
   }
 
-  // Validation des inputs
+  // Validation structure
   if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
   if (items.length > 20) return res.status(400).json({ error: 'Trop d\'articles dans le panier.' });
-  if (typeof totalPrice !== 'number' || totalPrice < 0 || totalPrice > 10000) return res.status(400).json({ error: 'Prix invalide.' });
   for (const item of items) {
+    if (!item.id || typeof item.id !== 'string') return res.status(400).json({ error: 'Article invalide (id manquant).' });
     if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' });
-    if (typeof item.price !== 'number' || item.price < 0) return res.status(400).json({ error: 'Prix article invalide.' });
   }
+
+  // 🔒 Recalcul des prix CÔTÉ SERVEUR — on ne fait jamais confiance au prix client
+  let dbMods, activePromos;
+  try {
+    [dbMods, activePromos] = await Promise.all([getMods(true), getPromotions(true)]);
+  } catch (e) { return res.status(500).json({ error: 'Erreur lecture base de données.' }); }
+
+  let serverTotal = 0;
+  const validatedItems = [];
+  for (const item of items) {
+    const dbMod = dbMods.find(m => m.id === item.id);
+    if (!dbMod) return res.status(400).json({ error: `Mod introuvable : ${item.id}` });
+    let promoDiscount = 0;
+    for (const p of activePromos) {
+      if (!p.apply_to_categories?.length || p.apply_to_categories.includes(dbMod.category)) {
+        if (p.discount_percent > promoDiscount) promoDiscount = p.discount_percent;
+      }
+    }
+    const serverPrice = parseFloat(dbMod.base_price) * (1 - promoDiscount / 100);
+    const opts  = item.options || {};
+    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
+    const qty   = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
+    serverTotal += (serverPrice + extra) * qty;
+    validatedItems.push({ ...item, price: serverPrice, quantity: qty });
+  }
+  const coreOption = req.body.coreOption === true;
+  if (coreOption) serverTotal += 10;
+  serverTotal = Math.round(serverTotal * 100) / 100;
   try {
     const guild = discordBot.guilds.cache.first();
     if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
@@ -749,8 +787,8 @@ app.post('/api/order', async (req, res) => {
 
     const channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}` });
 
-    const coreOption    = req.body.coreOption || false;
-    const itemLines     = items.map(item => {
+    const coreOption    = req.body.coreOption === true;
+    const itemLines     = validatedItems.map(item => {
       const opts = item.options || {};
       const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
       const total = (item.price + extra) * item.quantity;
@@ -764,14 +802,14 @@ app.post('/api/order', async (req, res) => {
 
     await channel.send([
       `# 🛒 Nouvelle commande — ${new Date().toLocaleDateString('fr-FR')}`,
-      ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(totalPrice)}**`,
+      ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(serverTotal)}**`,
       ``, `## 📦 Articles commandés`, itemLines + coreLines,
       ``, `## 👷 Staff notifié`, staffMentions,
       ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``,
     ].join('\n'));
 
     // Embed de statut initial
-    const orderData = { discord_username: username, discord_id: discordUser?.id || null, ticket_channel: ticketName, total_price: totalPrice, items, core_option: coreOption, created_at: new Date().toISOString() };
+    const orderData = { discord_username: username, discord_id: discordUser?.id || null, ticket_channel: ticketName, total_price: serverTotal, items: validatedItems, core_option: coreOption, created_at: new Date().toISOString() };
     const embed     = buildStatusEmbed(orderData, 'pending');
     const embedMsg  = await channel.send({ embeds: [embed] });
 
