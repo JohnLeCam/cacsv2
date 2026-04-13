@@ -1,4 +1,4 @@
-let siteData     = null;
+=let siteData     = null;
 let userData     = null;
 let activeFilter = 'all';
 let searchQuery  = '';
@@ -208,10 +208,19 @@ function renderPromos() {
 function startBannerCountdown(promoId, endDateStr) {
   const endDate = new Date(endDateStr);
   const elId    = 'bcd-' + promoId;
+  let expired   = false;
   function update() {
     const els  = document.querySelectorAll(`[id="${elId}"]`);
     const diff = endDate - new Date();
-    if (diff <= 0) { els.forEach(el => el.textContent = 'Expirée'); return; }
+    if (diff <= 0) {
+      els.forEach(el => el.textContent = 'Expirée');
+      if (!expired) {
+        expired = true;
+        // Recharger les données pour retirer la promo expirée des prix
+        setTimeout(() => loadAll(), 1000);
+      }
+      return;
+    }
     const j = Math.floor(diff / 86400000), h = Math.floor((diff % 86400000) / 3600000);
     const m = Math.floor((diff % 3600000) / 60000), s = Math.floor((diff % 60000) / 1000);
     const pad = n => String(n).padStart(2, '0');
