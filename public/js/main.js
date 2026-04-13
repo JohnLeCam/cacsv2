@@ -24,6 +24,7 @@ async function loadAll() {
     renderPromos();
     renderCategoryFilters();
     renderMods();
+    cleanCart(); // supprime les articles fantômes au chargement
     await checkMaintenanceBanner();
     sendVisitorPing(); // mise à jour avec le username Discord si connecté
 
@@ -660,6 +661,24 @@ function addToCart(modId) {
   const btn = document.getElementById(`cart-btn-${modId}`);
   if (btn) { btn.textContent = '✅ Ajouté !'; btn.classList.add('added'); setTimeout(() => { btn.textContent = '🛒 Ajouter'; }, 1500); }
   openCart();
+}
+
+// Nettoie les articles fantômes (mods supprimés/inexistants) du panier
+function cleanCart() {
+  if (!_allMods || _allMods.length === 0) return;
+  const before = cart.length;
+  cart = cart.filter(i => _allMods.some(m => m.id === i.id));
+  if (cart.length !== before) {
+    saveCart();
+    if (before - cart.length > 0) showToast(`🧹 ${before - cart.length} article(s) obsolète(s) retiré(s) du panier`);
+  }
+}
+
+function emptyCart() {
+  if (cart.length === 0) return;
+  cart = [];
+  saveCart();
+  showToast('Panier vidé');
 }
 
 function removeFromCart(modId) { cart = cart.filter(i => i.id !== modId); saveCart(); }

@@ -351,7 +351,10 @@
   <div class="cart-drawer" id="cartDrawer">
     <div class="cart-header">
       <h3>🛒 Mon panier</h3>
-      <button onclick="toggleCart()" class="cart-close">✕</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="emptyCart()" style="background:transparent;border:1px solid rgba(217,0,0,0.3);color:#ef4444;font-size:0.72rem;padding:4px 10px;border-radius:4px;cursor:pointer;font-family:inherit;transition:all 0.2s" onmouseover="this.style.background='rgba(217,0,0,0.15)'" onmouseout="this.style.background='transparent'">🗑️ Vider</button>
+        <button onclick="toggleCart()" class="cart-close">✕</button>
+      </div>
     </div>
     <div class="cart-items" id="cartItems">
       <div class="cart-empty">Ton panier est vide</div>
