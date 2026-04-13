@@ -35,7 +35,7 @@ async function saveAll() {
 
 function setSaveStatus(cls, txt) { const el = document.getElementById('saveStatus'); el.className = 'save-status ' + cls; el.textContent = txt; }
 
-const tabTitles = { dashboard:'Dashboard', orders:'Commandes', stats:'Statistiques', mods:'Gérer les mods', categories:'Gérer les catégories', promos:'Gérer les promotions', roles:'Rôles Discord & Réductions', config:'Configuration du site', settings:'Paramètres' };
+const tabTitles = { dashboard:'Dashboard', live:'Temps réel', orders:'Commandes', stats:'Statistiques', mods:'Gérer les mods', categories:'Gérer les catégories', promos:'Gérer les promotions', roles:'Rôles Discord & Réductions', config:'Configuration du site', settings:'Paramètres' };
 
 function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -45,6 +45,7 @@ function switchTab(tab) {
   document.getElementById('tabTitle').textContent = tabTitles[tab] || tab;
   if (tab === 'stats')  loadStats();
   if (tab === 'orders') loadOrders();
+  if (tab === 'live')   initLive();
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────
@@ -755,6 +756,151 @@ function imgDragOver(e)    { e.preventDefault(); e.currentTarget.classList.add('
 function imgDragLeave(e)   { e.currentTarget.classList.remove('drag-over'); }
 function imgDragEnd(e)     { e.currentTarget.style.opacity=''; document.querySelectorAll('.img-mgr-item').forEach(el=>el.classList.remove('drag-over')); }
 function imgDrop(e,targetIdx) { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (_imgDragSrc===null||_imgDragSrc===targetIdx) return; const [moved]=_imageList.splice(_imgDragSrc,1); _imageList.splice(targetIdx,0,moved); renderImageManager(); }
+
+// ═══════════════ TEMPS RÉEL (SSE) ═══════════════
+let _liveESS        = null;   // EventSource
+let _liveInit       = false;  // déjà initialisé ?
+let _activityLog    = [];     // historique activité
+
+function initLive() {
+  if (_liveInit) return;
+  _liveInit = true;
+  connectSSE();
+}
+
+function connectSSE() {
+  if (_liveESS) { _liveESS.close(); }
+
+  setLiveStatus('connecting');
+  _liveESS = new EventSource('/api/admin/live-stream');
+
+  _liveESS.addEventListener('snapshot', e => {
+    const d = JSON.parse(e.data);
+    renderVisitors(d.visitors);
+    updateLiveCounters(d.visitors);
+  });
+
+  _liveESS.addEventListener('visitor_update', e => {
+    const d = JSON.parse(e.data);
+    renderVisitors(d.visitors);
+    updateLiveCounters(d.visitors);
+    if (d.event) pushActivity(d.event);
+  });
+
+  _liveESS.addEventListener('new_order', e => {
+    const d = JSON.parse(e.data);
+    pushActivity({ type: 'order', label: `🎫 Nouveau ticket — ${esc(d.username)} — ${formatEUR(d.total)}`, ts: Date.now() });
+    showToast(`🎫 Nouvelle commande de ${d.username} !`);
+  });
+
+  _liveESS.onopen = () => setLiveStatus('connected');
+
+  _liveESS.onerror = () => {
+    setLiveStatus('disconnected');
+    // Reconnexion auto dans 5s
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+function setLiveStatus(state) {
+  const dot = document.getElementById('liveDot');
+  const txt = document.getElementById('liveStatusTxt');
+  if (!dot || !txt) return;
+  const map = {
+    connecting:   { color: '#f97316', text: 'Connexion en cours...' },
+    connected:    { color: '#22c55e', text: '🟢 Connecté — flux en direct actif' },
+    disconnected: { color: '#ef4444', text: '🔴 Déconnecté — reconnexion dans 5s...' }
+  };
+  const s = map[state] || map.disconnected;
+  dot.style.background = s.color;
+  txt.textContent      = s.text;
+  txt.style.color      = s.color;
+}
+
+function updateLiveCounters(visitors) {
+  const nonEmpty = visitors.filter(v => v.cart && v.cart.length > 0);
+  const total    = nonEmpty.reduce((sum, v) => sum + v.cartTotal, 0);
+  const vcEl = document.getElementById('liveVisitorCount');
+  const ccEl = document.getElementById('liveCartCount');
+  const cvEl = document.getElementById('liveCartValue');
+  if (vcEl) vcEl.textContent = visitors.length;
+  if (ccEl) ccEl.textContent = nonEmpty.length;
+  if (cvEl) cvEl.textContent = formatEUR(total);
+}
+
+function renderVisitors(visitors) {
+  const list = document.getElementById('liveVisitorsList');
+  if (!list) return;
+  if (!visitors || visitors.length === 0) {
+    list.innerHTML = '<p style="color:var(--grey-m);font-size:0.85rem;padding:8px 6px">Aucun visiteur pour le moment.</p>';
+    return;
+  }
+  list.innerHTML = visitors.map(v => {
+    const ago      = timeAgo(v.lastSeen);
+    const isDiscord = !!v.username;
+    const nameHTML  = isDiscord
+      ? `<strong style="color:#c9cdfb">${esc(v.username)}</strong> <span style="font-size:0.65rem;background:#5865f2;color:#fff;padding:1px 5px;border-radius:3px;font-family:var(--mono)">Discord</span>`
+      : `<span style="color:var(--grey-l)">Visiteur anonyme</span>`;
+
+    const cartHTML = (!v.cart || v.cart.length === 0)
+      ? `<div style="font-size:0.75rem;color:var(--grey-m);margin-top:6px;padding-left:2px">🛒 Panier vide</div>`
+      : `<div style="margin-top:8px;display:flex;flex-direction:column;gap:3px">
+           <div style="font-size:0.72rem;font-weight:700;color:var(--white);margin-bottom:2px">
+             🛒 ${v.cart.length} article${v.cart.length > 1 ? 's' : ''} — <span style="color:var(--green);font-family:var(--mono)">${formatEUR(v.cartTotal)}</span>
+           </div>
+           ${v.cart.map(item => `
+             <div style="font-size:0.72rem;color:var(--grey-l);padding-left:10px;display:flex;justify-content:space-between">
+               <span>└ ${esc(item.name)}</span>
+               <span style="font-family:var(--mono);color:var(--grey-m)">${formatEUR(item.price)}</span>
+             </div>`).join('')}
+         </div>`;
+
+    return `<div style="background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);padding:12px 14px;transition:border-color 0.2s">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+        <div style="font-size:0.85rem">${nameHTML}</div>
+        <div style="font-size:0.68rem;color:var(--grey-m);font-family:var(--mono)">${ago}</div>
+      </div>
+      ${cartHTML}
+    </div>`;
+  }).join('');
+}
+
+function pushActivity(event) {
+  _activityLog.unshift({ ...event, ts: event.ts || Date.now() });
+  if (_activityLog.length > 50) _activityLog.pop();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const feed = document.getElementById('liveActivityFeed');
+  if (!feed) return;
+  if (_activityLog.length === 0) {
+    feed.innerHTML = '<p style="color:var(--grey-m);font-size:0.82rem;padding:8px">Aucune activité récente.</p>';
+    return;
+  }
+  feed.innerHTML = _activityLog.map(e => {
+    const ago   = timeAgo(e.ts);
+    const color = e.type === 'order' ? '#22c55e' : e.type === 'leave' ? '#ef4444' : 'var(--grey-m)';
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 6px;border-bottom:1px solid var(--border);font-size:0.78rem">
+      <span style="color:${color};flex:1;line-height:1.4">${e.label}</span>
+      <span style="color:var(--grey-m);font-family:var(--mono);white-space:nowrap;flex-shrink:0;font-size:0.68rem">${ago}</span>
+    </div>`;
+  }).join('');
+}
+
+function clearActivityFeed() {
+  _activityLog = [];
+  renderActivityFeed();
+}
+
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 5)  return 'À l\'instant';
+  if (diff < 60) return `il y a ${diff}s`;
+  const m = Math.floor(diff / 60);
+  if (m < 60)    return `il y a ${m}m`;
+  return `il y a ${Math.floor(m / 60)}h`;
+}
 
 (async () => {
   try {

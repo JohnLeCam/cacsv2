@@ -491,6 +491,83 @@ app.delete('/api/admin/stats/reset', requireAdmin, async (req, res) => {
   catch (err) { res.status(500).json({ error: 'Erreur reset stats' }); }
 });
 
+// ══════════════════════════════════════════════════════════════
+//  TEMPS RÉEL — Server-Sent Events (SSE)
+// ══════════════════════════════════════════════════════════════
+
+const liveVisitors    = new Map();  // visitorId → { username, cart, cartTotal, lastSeen, connectedAt }
+const adminSSEClients = new Set();  // connexions admin SSE actives
+const VISITOR_TIMEOUT = 2 * 60 * 1000; // 2 min d'inactivité → supprimé
+
+setInterval(() => {
+  const now = Date.now(); let changed = false;
+  for (const [id, v] of liveVisitors) {
+    if (now - v.lastSeen > VISITOR_TIMEOUT) { liveVisitors.delete(id); changed = true; }
+  }
+  if (changed) broadcastLive({ type: 'visitor_update', visitors: getVisitorsList() });
+}, 30000);
+
+function getVisitorsList() {
+  return Array.from(liveVisitors.values()).sort((a, b) => b.lastSeen - a.lastSeen);
+}
+
+function broadcastLive(payload) {
+  const msg = `event: ${payload.type}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of adminSSEClients) {
+    try { client.write(msg); } catch (e) { adminSSEClients.delete(client); }
+  }
+}
+
+// Connexion SSE admin
+app.get('/api/admin/live-stream', requireAdmin, (req, res) => {
+  res.setHeader('Content-Type',        'text/event-stream');
+  res.setHeader('Cache-Control',       'no-cache');
+  res.setHeader('Connection',          'keep-alive');
+  res.setHeader('X-Accel-Buffering',   'no');
+  res.flushHeaders();
+  res.write(`event: snapshot\ndata: ${JSON.stringify({ type: 'snapshot', visitors: getVisitorsList() })}\n\n`);
+  adminSSEClients.add(res);
+  const keepAlive = setInterval(() => { try { res.write(': keepalive\n\n'); } catch (e) {} }, 25000);
+  req.on('close', () => { clearInterval(keepAlive); adminSSEClients.delete(res); });
+});
+
+// Heartbeat visiteur
+app.post('/api/visitor/ping', (req, res) => {
+  const { visitorId, username, cart, cartTotal } = req.body;
+  if (!visitorId) return res.json({ ok: false });
+  const existing = liveVisitors.get(visitorId);
+  const isNew    = !existing;
+  liveVisitors.set(visitorId, {
+    username:    username || null,
+    cart:        Array.isArray(cart) ? cart : [],
+    cartTotal:   cartTotal || 0,
+    lastSeen:    Date.now(),
+    connectedAt: existing?.connectedAt || Date.now()
+  });
+  let event = null;
+  if (isNew) {
+    const who = username || 'Visiteur anonyme';
+    event = { type: 'join', label: `👤 ${who} a ouvert le site`, ts: Date.now() };
+  } else if (cart?.length > 0 && existing.cart?.length !== cart.length) {
+    const who  = username || 'Un visiteur';
+    const last = cart[cart.length - 1];
+    event = { type: 'cart', label: `🛒 ${who} a modifié son panier — ${last?.name || ''}`, ts: Date.now() };
+  }
+  broadcastLive({ type: 'visitor_update', visitors: getVisitorsList(), event });
+  res.json({ ok: true });
+});
+
+// Départ visiteur
+app.post('/api/visitor/leave', (req, res) => {
+  const { visitorId } = req.body;
+  if (visitorId && liveVisitors.has(visitorId)) {
+    const v = liveVisitors.get(visitorId);
+    liveVisitors.delete(visitorId);
+    broadcastLive({ type: 'visitor_update', visitors: getVisitorsList(), event: { type: 'leave', label: `👋 ${v.username || 'Visiteur anonyme'} a quitté le site`, ts: Date.now() } });
+  }
+  res.json({ ok: true });
+});
+
 // ── 📢 API LOGO SITE — Supabase Storage ──────────────────────
 app.post('/api/admin/upload-logo', requireAdmin, async (req, res) => {
   const { imageBase64 } = req.body;
@@ -709,6 +786,8 @@ app.post('/api/order', async (req, res) => {
     } catch (e) { console.warn('Impossible de sauvegarder la commande:', e.message); }
 
     console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
+    // Notifier le dashboard temps réel
+    broadcastLive({ type: 'new_order', username, total: totalPrice });
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
 
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }

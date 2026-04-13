@@ -861,7 +861,8 @@ setInterval(sendVisitorPing, 30000);
 
 // Prévenir le serveur quand le visiteur quitte la page
 window.addEventListener('beforeunload', () => {
-  navigator.sendBeacon('/api/visitor/leave', JSON.stringify({ visitorId: _visitorId }));
+  const blob = new Blob([JSON.stringify({ visitorId: _visitorId })], { type: 'application/json' });
+  navigator.sendBeacon('/api/visitor/leave', blob);
 });
 
 function showToast(msg) {

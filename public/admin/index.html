@@ -199,6 +199,7 @@
       </div>
       <nav class="sidebar-nav">
         <div class="nav-item active" data-tab="dashboard"  onclick="switchTab('dashboard')"> <span class="nav-icon">📊</span> Dashboard</div>
+        <div class="nav-item"        data-tab="live"       onclick="switchTab('live')">       <span class="nav-icon">🔴</span> Temps réel</div>
         <div class="nav-item"        data-tab="orders"     onclick="switchTab('orders')">    <span class="nav-icon">📋</span> Commandes</div>
         <div class="nav-item"        data-tab="stats"      onclick="switchTab('stats')">     <span class="nav-icon">📈</span> Statistiques</div>
         <div class="nav-item"        data-tab="mods"       onclick="switchTab('mods')">      <span class="nav-icon">🎮</span> Mods</div>
@@ -227,6 +228,60 @@
           <div class="stats-grid" id="statsGrid"></div>
           <div class="card"><div class="card-header"><span class="card-title">Bienvenue</span></div>
             <div class="card-body"><p style="color:var(--grey-l);font-size:0.95rem;line-height:1.7">Utilise la barre latérale pour gérer tes mods, promotions et rôles Discord.<br>Les modifications sont sauvegardées automatiquement après chaque action.</p></div>
+          </div>
+        </div>
+
+        <!-- TEMPS RÉEL -->
+        <div class="tab-pane" id="tab-live">
+
+          <!-- Barre de statut connexion SSE -->
+          <div id="liveStatusBar" style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:10px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r);font-size:0.82rem">
+            <span id="liveDot" style="width:8px;height:8px;border-radius:50%;background:var(--grey-m);flex-shrink:0"></span>
+            <span id="liveStatusTxt" style="color:var(--grey-m)">Connexion en cours...</span>
+          </div>
+
+          <!-- Compteurs -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:24px">
+            <div class="stat-card">
+              <div class="stat-value green" id="liveVisitorCount">0</div>
+              <div class="stat-label">Visiteurs actifs</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value red" id="liveCartCount">0</div>
+              <div class="stat-label">Paniers non vides</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="liveCartValue" style="font-size:1.4rem">0,00 €</div>
+              <div class="stat-label">Valeur totale paniers</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start" id="liveGrid">
+
+            <!-- Visiteurs actifs -->
+            <div class="card">
+              <div class="card-header">
+                <span class="card-title">👥 Visiteurs actifs</span>
+                <span style="font-family:var(--mono);font-size:0.72rem;color:var(--grey-m)">Mise à jour en direct</span>
+              </div>
+              <div class="card-body" style="padding:12px">
+                <div id="liveVisitorsList" style="display:flex;flex-direction:column;gap:8px">
+                  <p style="color:var(--grey-m);font-size:0.85rem;padding:8px 6px">Aucun visiteur pour le moment.</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Flux d'activité -->
+            <div class="card">
+              <div class="card-header" style="justify-content:space-between">
+                <span class="card-title">⚡ Activité</span>
+                <button class="btn-icon" onclick="clearActivityFeed()" title="Vider le flux" style="font-size:0.7rem;width:auto;padding:2px 8px">Vider</button>
+              </div>
+              <div class="card-body" style="padding:8px;max-height:480px;overflow-y:auto" id="liveActivityFeed">
+                <p style="color:var(--grey-m);font-size:0.82rem;padding:8px">Aucune activité récente.</p>
+              </div>
+            </div>
+
           </div>
         </div>
 
