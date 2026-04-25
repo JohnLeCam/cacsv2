@@ -613,7 +613,13 @@ app.use(express.json({ limit: '2mb' }));
 app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(compression());
+// Compression gzip — exclut la route SSE qui ne supporte pas le buffering
+app.use(compression({
+  filter: (req, res) => {
+    if (req.path === '/api/admin/live-stream') return false;
+    return compression.filter(req, res);
+  }
+}));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false, message: { error: 'Trop de requêtes, réessaie dans quelques minutes.' } }));
 
 const authLimiter  = rateLimit({ windowMs: 15 * 60 * 1000, max: 20,  message: { error: 'Trop de tentatives de connexion, réessaie dans 15 minutes.' } });
