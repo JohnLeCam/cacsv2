@@ -826,7 +826,7 @@ app.post('/api/order', async (req, res) => {
 
     console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
     // Notifier le dashboard temps réel
-    broadcastLive({ type: 'new_order', username, total: totalPrice });
+    broadcastLive({ type: 'new_order', username, total: serverTotal });
     res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
 
   } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
