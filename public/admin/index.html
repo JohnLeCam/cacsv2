@@ -345,6 +345,21 @@
             </div>
           </div>
           <div class="card">
+            <div class="card-header"><span class="card-title">🎫 Tickets de commande</span></div>
+            <div class="card-body">
+              <div class="maintenance-box" style="background:rgba(0,87,184,0.06);border-color:rgba(0,87,184,0.25)">
+                <div class="maintenance-box-left">
+                  <div class="maintenance-box-title">Regrouper les commandes dans le ticket ouvert</div>
+                  <div class="maintenance-box-desc">Quand activé, si un client a déjà un ticket ouvert sur Discord, ses nouvelles commandes sont ajoutées dans ce même ticket au lieu d'en créer un nouveau. Un panier identique renvoyé en moins de 2 minutes est ignoré.</div>
+                </div>
+                <div class="maintenance-box-right">
+                  <div class="toggle-wrap" onclick="toggleMergeOrders()"><button class="toggle" id="toggleMergeOrders"></button></div>
+                  <span id="mergeOrdersStatus" style="font-family:var(--mono);font-size:0.72rem;font-weight:600;letter-spacing:0.08em">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
             <div class="card-header"><span class="card-title">Informations du site</span></div>
             <div class="card-body">
               <div class="form-grid">

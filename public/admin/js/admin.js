@@ -494,6 +494,9 @@ function loadConfigForm() {
   const isOn = data.site.maintenance_mode === 'true';
   setToggle('toggleMaintenance', isOn);
   updateMaintenanceStatus(isOn);
+  const mergeOn = data.site.merge_orders !== 'false'; // activé par défaut
+  setToggle('toggleMergeOrders', mergeOn);
+  updateMergeOrdersStatus(mergeOn);
 }
 
 async function saveConfig() {
@@ -502,16 +505,94 @@ async function saveConfig() {
   await saveAll(); updateMaintenanceStatus(isOn); showToast('Configuration sauvegardée !');
 }
 
+let _maintenanceBusy = false;
 async function toggleMaintenance() {
-  document.getElementById('toggleMaintenance').classList.toggle('on');
-  const isOn = isToggleOn('toggleMaintenance');
-  updateMaintenanceStatus(isOn);
+  if (_maintenanceBusy) return; // évite les doubles clics pendant l'enregistrement
+  const toggle = document.getElementById('toggleMaintenance');
+  const wasOn  = isToggleOn('toggleMaintenance');
+  const wantOn = !wasOn;
+
+  if (wantOn && !confirm("Activer le mode maintenance ?\n\nLes visiteurs seront redirigés vers la page de maintenance.\nToi et le staff (connectés avec Discord) garderez l'accès au site.")) return;
+
+  _maintenanceBusy = true;
+  if (toggle) { toggle.disabled = true; toggle.style.opacity = '0.5'; }
+  setSaveStatus('saving', 'Sauvegarde...');
+
   try {
-    setSaveStatus('saving', 'Sauvegarde...');
-    const res = await fetch('/api/admin/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ site: { maintenance_mode: isOn ? 'true' : 'false' } }) });
-    if (res.ok) { if (data.site) data.site.maintenance_mode = isOn ? 'true' : 'false'; setSaveStatus('saved', '✓ Sauvegardé'); setTimeout(() => setSaveStatus('', ''), 2000); }
-    else setSaveStatus('error', '✗ Erreur');
-  } catch (e) { setSaveStatus('error', '✗ Erreur serveur'); }
+    const res = await fetch('/api/admin/maintenance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ enabled: wantOn })
+    });
+    let body = {};
+    try { body = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(body.error || `Erreur HTTP ${res.status}`);
+
+    // On affiche l'état RÉEL renvoyé par le serveur (pas une supposition)
+    const serverState = body.maintenance === true;
+    setToggle('toggleMaintenance', serverState);
+    updateMaintenanceStatus(serverState);
+    if (data?.site) data.site.maintenance_mode = serverState ? 'true' : 'false';
+    setSaveStatus('saved', '✓ Sauvegardé');
+    setTimeout(() => setSaveStatus('', ''), 2000);
+    showToast(serverState ? '🔴 Maintenance activée' : '🟢 Maintenance désactivée — site accessible');
+  } catch (e) {
+    // Échec : on remet le bouton dans son état d'origine
+    setToggle('toggleMaintenance', wasOn);
+    updateMaintenanceStatus(wasOn);
+    setSaveStatus('error', '✗ Erreur');
+    showToast('Maintenance non modifiée : ' + e.message, true);
+    console.error('Erreur toggle maintenance :', e);
+  } finally {
+    _maintenanceBusy = false;
+    if (toggle) { toggle.disabled = false; toggle.style.opacity = ''; }
+  }
+}
+
+// ─── Option : regrouper les commandes dans le ticket ouvert ───
+let _mergeBusy = false;
+async function toggleMergeOrders() {
+  if (_mergeBusy) return;
+  const toggle = document.getElementById('toggleMergeOrders');
+  const wasOn  = isToggleOn('toggleMergeOrders');
+  const wantOn = !wasOn;
+  _mergeBusy = true;
+  if (toggle) { toggle.disabled = true; toggle.style.opacity = '0.5'; }
+  setToggle('toggleMergeOrders', wantOn);
+  updateMergeOrdersStatus(wantOn);
+  setSaveStatus('saving', 'Sauvegarde...');
+  try {
+    const res = await fetch('/api/admin/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ site: { merge_orders: wantOn ? 'true' : 'false' } })
+    });
+    let body = {};
+    try { body = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(body.error || `Erreur HTTP ${res.status}`);
+    if (data?.site) data.site.merge_orders = wantOn ? 'true' : 'false';
+    setSaveStatus('saved', '✓ Sauvegardé');
+    setTimeout(() => setSaveStatus('', ''), 2000);
+    showToast(wantOn ? '🎫 Regroupement des commandes activé' : '🎫 Un ticket par commande');
+  } catch (e) {
+    setToggle('toggleMergeOrders', wasOn);
+    updateMergeOrdersStatus(wasOn);
+    setSaveStatus('error', '✗ Erreur');
+    showToast('Option non modifiée : ' + e.message, true);
+    console.error('Erreur toggle regroupement :', e);
+  } finally {
+    _mergeBusy = false;
+    if (toggle) { toggle.disabled = false; toggle.style.opacity = ''; }
+  }
+}
+
+function updateMergeOrdersStatus(isOn) {
+  const el = document.getElementById('mergeOrdersStatus');
+  if (!el) return;
+  el.textContent = isOn ? '🟢 REGROUPEMENT ACTIF' : '⚪ UN TICKET PAR COMMANDE';
+  el.style.color = isOn ? '#4ade80' : '#a8aab8';
 }
 
 function updateMaintenanceStatus(isOn) {

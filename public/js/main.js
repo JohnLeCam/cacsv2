@@ -813,11 +813,12 @@ function openOrderModal() {
       </div>
       <div class="order-info-box">
         ✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>
-        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.
+        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.<br>
+        <span style="opacity:0.75">Si tu as déjà un ticket ouvert, ta commande y sera ajoutée.</span>
       </div>
       <div class="order-modal-actions">
         <button class="btn-ghost" onclick="closeOrderModal()">Annuler</button>
-        <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">🎫 Créer le ticket Discord</button>
+        <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">🎫 Valider la commande</button>
       </div>`;
   }
 
@@ -832,27 +833,36 @@ function openOrderModal() {
 
 function closeOrderModal() { const overlay = document.getElementById('orderModalOverlay'); if (overlay) overlay.classList.remove('open'); document.body.style.overflow = ''; }
 
+let _orderSending = false;
 async function confirmOrder() {
+  if (_orderSending) return; // bloque les doubles clics
+  _orderSending = true;
   const btn = document.getElementById('btnConfirmOrder');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Création en cours...'; }
-  const coreChecked = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
-  const total = cart.reduce((sum, i) => { const opts=i.options||{}; const extra=(opts.debadgage?10:0)+(opts.retexture?5:0); return sum+(i.price+extra)*i.quantity; }, 0) + coreChecked;
+  const resetBtn = () => { _orderSending = false; if (btn) { btn.disabled = false; btn.textContent = '🎫 Valider la commande'; } };
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi en cours...'; }
   try {
     const coreOption = document.getElementById('cartCoreOption')?.checked || false;
-    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, totalPrice:total, coreOption, discordUser:userData?.connected?{id:userData.id,username:userData.username}:null }) });
-    const result = await res.json();
-    if (result.success) {
+    // L'identité Discord est lue côté serveur (session) : on n'envoie que le panier
+    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, coreOption }) });
+    let result = {};
+    try { result = await res.json(); } catch { /* réponse non JSON */ }
+    if (res.ok && result.success) {
       cart = []; saveCart();
+      const title = result.merged ? 'Commande ajoutée à ton ticket !' : 'Ticket créé avec succès !';
+      const text  = result.merged
+        ? 'Tu avais déjà un ticket ouvert : ta nouvelle commande y a été ajoutée.<br>Notre équipe va la traiter avec le reste.'
+        : 'Un ticket a été ouvert sur notre Discord.<br>Notre équipe va te contacter très rapidement.';
       const body = document.getElementById('orderModalBody');
-      if (body) body.innerHTML = `<div class="order-success"><div class="success-icon">🎫</div><h4>Ticket créé avec succès !</h4><p>Un ticket a été ouvert sur notre Discord.<br>Notre équipe va te contacter très rapidement.</p><div class="ticket-link">#${escapeHtml(result.ticketChannel)}</div></div><div style="margin-top:18px"><button onclick="closeOrderModal()" style="width:100%;background:var(--blue);border:none;color:#fff;padding:11px;border-radius:4px;font-weight:700;font-size:0.9rem;cursor:pointer;letter-spacing:0.06em">Fermer</button></div>`;
+      if (body) body.innerHTML = `<div class="order-success"><div class="success-icon">${result.merged ? '➕' : '🎫'}</div><h4>${title}</h4><p>${text}</p><div class="ticket-link">#${escapeHtml(result.ticketChannel)}</div></div><div style="margin-top:18px"><button onclick="closeOrderModal()" style="width:100%;background:var(--blue);border:none;color:#fff;padding:11px;border-radius:4px;font-weight:700;font-size:0.9rem;cursor:pointer;letter-spacing:0.06em">Fermer</button></div>`;
+      _orderSending = false;
     } else {
       alert('Erreur : ' + (result.error || 'Impossible de créer le ticket.'));
-      if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
+      resetBtn();
     }
   } catch (err) {
     console.error('Erreur commande:', err);
     alert('Erreur de connexion au serveur.');
-    if (btn) { btn.disabled = false; btn.textContent = '🎫 Créer le ticket Discord'; }
+    resetBtn();
   }
 }
 

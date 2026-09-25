@@ -18,6 +18,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Transforme "id1, id2,id3" (ou un tableau) en ['id1','id2','id3'] propre (sans espaces ni vides)
+function normalizeIds(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return list.map(id => String(id).trim()).filter(Boolean);
+}
+
 let config;
 try {
   config = require('./config/discord.config');
@@ -30,20 +36,25 @@ try {
     REDIRECT_URI:         process.env.DISCORD_REDIRECT_URI,
     GUILD_ID:             process.env.DISCORD_GUILD_ID,
     SESSION_SECRET:       process.env.SESSION_SECRET,
-    ADMIN_ROLE_IDS:       process.env.ADMIN_ROLE_IDS ? process.env.ADMIN_ROLE_IDS.split(',') : [],
+    ADMIN_ROLE_IDS:       process.env.ADMIN_ROLE_IDS,
     SUPABASE_URL:         process.env.SUPABASE_URL,
     SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
     BOT_TOKEN:            process.env.BOT_TOKEN,
     TICKET_CAT_ID:        process.env.TICKET_CAT_ID,
-    STAFF_ROLE_IDS:       process.env.STAFF_ROLE_IDS ? process.env.STAFF_ROLE_IDS.split(',') : [],
+    STAFF_ROLE_IDS:       process.env.STAFF_ROLE_IDS,
   };
 }
+
+// Nettoyage des listes de rôles (évite qu'un espace dans Railway bloque un admin)
+config.ADMIN_ROLE_IDS = normalizeIds(config.ADMIN_ROLE_IDS);
+config.STAFF_ROLE_IDS = normalizeIds(config.STAFF_ROLE_IDS);
+if (!config.ADMIN_ROLE_IDS.length) console.warn('⚠️  ADMIN_ROLE_IDS est vide : personne ne pourra accéder au panel admin !');
 
 const supabase = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY);
 
 const BOT_TOKEN      = config.BOT_TOKEN      || process.env.BOT_TOKEN;
 const TICKET_CAT_ID  = config.TICKET_CAT_ID  || process.env.TICKET_CAT_ID  || '1488660670726799471';
-const STAFF_ROLE_IDS = config.STAFF_ROLE_IDS || ['1412494453763211385','1412494594117206141','1439750620788822181'];
+const STAFF_ROLE_IDS = config.STAFF_ROLE_IDS.length ? config.STAFF_ROLE_IDS : ['1412494453763211385','1412494594117206141','1439750620788822181'];
 
 const STATUS_CONFIG = {
   pending:    { label: 'En attente', emoji: '🟡', color: 0xf59e0b },
@@ -620,7 +631,15 @@ app.use(compression({
     return compression.filter(req, res);
   }
 }));
-app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false, message: { error: 'Trop de requêtes, réessaie dans quelques minutes.' } }));
+// Fichiers statiques (images, css, js...) : ne doivent jamais compter dans la limite
+const ASSET_REGEX = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)$/i;
+// Routes appelées automatiquement en boucle par les pages : exclues de la limite globale
+const RATE_LIMIT_SKIP = ['/api/maintenance-status', '/api/visitor', '/api/admin/live-stream'];
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Trop de requêtes, réessaie dans quelques minutes.' },
+  skip: (req) => ASSET_REGEX.test(req.path) || RATE_LIMIT_SKIP.some(p => req.path.startsWith(p))
+}));
 
 const authLimiter  = rateLimit({ windowMs: 15 * 60 * 1000, max: 20,  message: { error: 'Trop de tentatives de connexion, réessaie dans 15 minutes.' } });
 const orderLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 10,  message: { error: 'Trop de commandes envoyées, réessaie dans 10 minutes.' } });
@@ -635,22 +654,89 @@ class SupabaseStore extends SupabaseSessionStore {
   async destroy(sid, cb) { try { await supabase.from('sessions').delete().eq('sid', sid); cb(null); } catch (e) { cb(null); } }
 }
 app.use(session({ store: new SupabaseStore(), secret: config.SESSION_SECRET || 'fallback-secret', resave: false, saveUninitialized: false, rolling: true, cookie: { secure: true, sameSite: 'none', maxAge: 7 * 24 * 60 * 60 * 1000 } }));
+// Sécurité : une ancienne session sans liste de rôles faisait planter les vérifications (page qui charge à l'infini)
+app.use((req, res, next) => {
+  if (req.session?.user && !Array.isArray(req.session.user.roles)) req.session.user.roles = [];
+  next();
+});
 
 // ── 3. MAINTENANCE ────────────────────────────────────────────
-async function isMaintenanceMode() { try { const { data } = await supabase.from('site_config').select('value').eq('key', 'maintenance_mode').single(); return data?.value === 'true'; } catch (e) { return false; } }
-app.get('/maintenance', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'maintenance.html')); });
+// Petit cache de 3 secondes pour ne pas interroger Supabase à chaque requête
+let maintenanceCache = { value: false, time: 0 };
+const MAINTENANCE_CACHE_TTL = 3000;
+function invalidateMaintenanceCache() { maintenanceCache.time = 0; }
+
+async function isMaintenanceMode() {
+  if (Date.now() - maintenanceCache.time < MAINTENANCE_CACHE_TTL) return maintenanceCache.value;
+  try {
+    const { data, error } = await supabase.from('site_config').select('value').eq('key', 'maintenance_mode').maybeSingle();
+    if (error) throw error;
+    const value = String(data?.value ?? '').trim().toLowerCase() === 'true';
+    maintenanceCache = { value, time: Date.now() };
+    return value;
+  } catch (e) {
+    console.warn('⚠️  Lecture maintenance_mode impossible :', e.message);
+    return maintenanceCache.value; // on garde le dernier état connu
+  }
+}
+
+// Vérifie si un utilisateur possède au moins un des rôles (ne plante jamais)
+function hasAnyRole(user, roleIds) {
+  return Array.isArray(user?.roles) && roleIds.some(id => user.roles.includes(id));
+}
+
+// Récupère les rôles à jour d'un membre via le bot Discord (plus fiable que l'OAuth)
+async function fetchRolesFromBot(userId) {
+  try {
+    if (!discordBot.isReady() || !config.GUILD_ID || !userId) return null;
+    const guild  = discordBot.guilds.cache.get(config.GUILD_ID) || await discordBot.guilds.fetch(config.GUILD_ID);
+    const member = await guild.members.fetch({ user: userId, force: true });
+    return [...member.roles.cache.keys()];
+  } catch (e) {
+    console.warn(`⚠️  Rôles introuvables via le bot pour ${userId} :`, e.message);
+    return null;
+  }
+}
+
+// Dit si la personne connectée est staff/admin. Si ses rôles en session semblent
+// incomplets, on les rafraîchit via le bot (au maximum 1 fois par minute).
+const ROLE_REFRESH_INTERVAL = 60 * 1000;
+async function getStaffAccess(req) {
+  const user = req.session?.user;
+  if (!user) return { connected: false, isStaff: false, isAdmin: false };
+  let isAdmin = hasAnyRole(user, config.ADMIN_ROLE_IDS);
+  let isStaff = hasAnyRole(user, STAFF_ROLE_IDS);
+  if (!isAdmin && !isStaff && Date.now() - (req.session.rolesCheckedAt || 0) > ROLE_REFRESH_INTERVAL) {
+    req.session.rolesCheckedAt = Date.now();
+    const freshRoles = await fetchRolesFromBot(user.id);
+    if (freshRoles) {
+      user.roles = freshRoles;
+      req.session.user = user;
+      isAdmin = hasAnyRole(user, config.ADMIN_ROLE_IDS);
+      isStaff = hasAnyRole(user, STAFF_ROLE_IDS);
+      if (isAdmin) req.session.isAdmin = true;
+    }
+  }
+  return { connected: true, isStaff: isStaff || isAdmin, isAdmin };
+}
+
+app.get('/maintenance', (req, res) => { res.set('Cache-Control', 'no-store'); res.sendFile(path.join(__dirname, 'public', 'maintenance.html')); });
 app.use(async (req, res, next) => {
-  const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt','/api/visitor','/cgvu','/legal'];
-  const isAsset = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|webp|map)(\?.*)?$/.test(req.path);
-  if (bypassPaths.some(p => req.path.startsWith(p)) || isAsset) return next();
-  const maintenance = await isMaintenanceMode();
-  if (!maintenance) return next();
-  const user = req.session.user;
-  if (!user) return res.redirect('/maintenance');
-  const isStaff = STAFF_ROLE_IDS.some(id => user.roles.includes(id));
-  const isAdmin = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-  if (isStaff || isAdmin) return next();
-  return res.redirect('/maintenance');
+  try {
+    const bypassPaths = ['/maintenance','/auth/discord','/auth/discord/callback','/auth/logout','/api/user','/api/maintenance-status','/sitemap.xml','/robots.txt','/api/visitor','/cgvu','/legal'];
+    if (bypassPaths.some(p => req.path.startsWith(p)) || ASSET_REGEX.test(req.path)) return next();
+    const maintenance = await isMaintenanceMode();
+    if (!maintenance) return next();
+    const access = await getStaffAccess(req);
+    if (access.isStaff) return next();
+    // Pour les appels API : réponse JSON claire au lieu d'une redirection HTML
+    if (req.path.startsWith('/api/')) return res.status(503).json({ error: 'Site en maintenance.', maintenance: true });
+    return res.redirect('/maintenance');
+  } catch (err) {
+    // Une erreur ici ne doit JAMAIS bloquer tout le site
+    console.error('❌ Erreur middleware maintenance :', err);
+    return next();
+  }
 });
 
 // ── 4. STATIC ─────────────────────────────────────────────────
@@ -658,11 +744,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── 5. MAINTENANCE STATUS ─────────────────────────────────────
 app.get('/api/maintenance-status', async (req, res) => {
-  const maintenance = await isMaintenanceMode();
-  const user = req.session.user;
-  const isStaff = user && STAFF_ROLE_IDS.some(id => user.roles.includes(id));
-  const isAdmin = user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
-  res.json({ maintenance, isStaff: !!(isStaff || isAdmin) });
+  res.set('Cache-Control', 'no-store');
+  try {
+    const maintenance = await isMaintenanceMode();
+    const access = await getStaffAccess(req);
+    res.json({ maintenance, connected: access.connected, isStaff: access.isStaff });
+  } catch (err) {
+    console.error('Erreur /api/maintenance-status :', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
 
 // ── 6. HELPERS SUPABASE ───────────────────────────────────────
@@ -676,7 +766,7 @@ function formatPrice(amount) { if (!amount || parseFloat(amount) <= 0) return 'G
 
 function formatData(site, categories, mods, promotions, discordRoles) {
   return {
-    site: { title: site.title || '', subtitle: site.subtitle || '', discordUrl: site.discordUrl || '', announcement: site.announcement || '', heroTagline: site.heroTagline || '', maintenance_mode: site.maintenance_mode || 'false', logo_url: site.logo_url || '' },
+    site: { title: site.title || '', subtitle: site.subtitle || '', discordUrl: site.discordUrl || '', announcement: site.announcement || '', heroTagline: site.heroTagline || '', maintenance_mode: site.maintenance_mode || 'false', logo_url: site.logo_url || '', merge_orders: site.merge_orders ?? 'true' },
     categories,
     mods: mods.map(m => ({ id: m.id, name: m.name, category: m.category, description: m.description || '', image: m.image || '', images: Array.isArray(m.images) ? m.images : (typeof m.images === 'string' ? JSON.parse(m.images || '[]') : []), basePrice: parseFloat(m.base_price), featured: m.featured, visible: m.visible, position: m.position, createdAt: m.created_at || null })),
     promotions: promotions.map(p => ({ id: p.id, name: p.name, description: p.description || '', discountPercent: p.discount_percent, endDate: p.end_date, applyToCategories: p.apply_to_categories || [], active: p.active, color: p.color })),
@@ -688,7 +778,7 @@ function formatData(site, categories, mods, promotions, discordRoles) {
 function requireAdmin(req, res, next) {
   const user = req.session.user;
   if (!user) return res.status(401).json({ error: 'Non connecté.' });
-  const hasAdminRole = config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id));
+  const hasAdminRole = hasAnyRole(user, config.ADMIN_ROLE_IDS);
   if (hasAdminRole) { req.session.isAdmin = true; return next(); }
   res.status(403).json({ error: "Accès refusé." });
 }
@@ -707,6 +797,9 @@ app.get('/auth/discord/callback', async (req, res) => {
     let memberRoles = [];
     try { await fetch(`https://discord.com/api/guilds/${config.GUILD_ID}/members/${userData.id}`, { method: 'PUT', headers: { Authorization: `Bot ${BOT_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: tokenData.access_token }) }); } catch (e) {}
     try { const memberRes = await fetch(`https://discord.com/api/users/@me/guilds/${config.GUILD_ID}/member`, { headers: { Authorization: `Bearer ${tokenData.access_token}` } }); const memberData = await memberRes.json(); memberRoles = memberData.roles || []; } catch (e) {}
+    // Secours : si Discord n'a pas renvoyé les rôles (limite de requêtes...), on les demande au bot
+    if (!memberRoles.length) { const botRoles = await fetchRolesFromBot(userData.id); if (botRoles) memberRoles = botRoles; }
+    req.session.rolesCheckedAt = Date.now();
     req.session.user = { id: userData.id, username: userData.username, avatar: userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png', roles: memberRoles };
     if (config.ADMIN_ROLE_IDS.some(id => memberRoles.includes(id))) req.session.isAdmin = true;
     res.redirect('/');
@@ -865,7 +958,12 @@ app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
 app.post('/api/admin/save', requireAdmin, async (req, res) => {
   const d = req.body;
   try {
-    if (d.site) { await Promise.all(Object.entries(d.site).map(([key, value]) => supabase.from('site_config').upsert({ key, value: String(value) }, { onConflict: 'key' }))); }
+    if (d.site) {
+      const results = await Promise.all(Object.entries(d.site).map(([key, value]) => supabase.from('site_config').upsert({ key, value: String(value) }, { onConflict: 'key' })));
+      const failed = results.find(r => r.error);
+      if (failed) throw failed.error;
+      if ('maintenance_mode' in d.site) invalidateMaintenanceCache();
+    }
     if (d.categories?.length) { const { data: existingCats } = await supabase.from('categories').select('id'); const toDeleteCats = (existingCats || []).map(c => c.id).filter(id => !d.categories.find(c => c.id === id)); if (toDeleteCats.length > 0) await supabase.from('categories').delete().in('id', toDeleteCats); for (const cat of d.categories) await supabase.from('categories').upsert({ id: cat.id, name: cat.name, color: cat.color || '#ffffff', icon: cat.icon || '📦', position: cat.position ?? 0 }, { onConflict: 'id' }); }
     if (d.mods) { const { data: existingMods } = await supabase.from('mods').select('id'); const toDelete = (existingMods || []).map(m => m.id).filter(id => !d.mods.find(m => m.id === id)); if (toDelete.length > 0) await supabase.from('mods').delete().in('id', toDelete); for (const mod of d.mods) { const { error: e } = await supabase.from('mods').upsert({ id: mod.id, name: mod.name, category: mod.category, description: mod.description || '', image: mod.image || '', base_price: mod.basePrice || 0, images: mod.images || [], featured: mod.featured || false, visible: mod.visible !== false, position: mod.position ?? 0 }, { onConflict: 'id' }); if (e) console.error('❌ Erreur upsert mod:', e.message); } }
     if (d.promotions) { const { data: existingPromos } = await supabase.from('promotions').select('id'); const toDeletePromos = (existingPromos || []).map(p => p.id).filter(id => !d.promotions.find(p => p.id === id)); if (toDeletePromos.length > 0) await supabase.from('promotions').delete().in('id', toDeletePromos); for (const promo of d.promotions) await supabase.from('promotions').upsert({ id: promo.id, name: promo.name, description: promo.description || '', discount_percent: promo.discountPercent || 0, end_date: promo.endDate, apply_to_categories: promo.applyToCategories || [], active: promo.active !== false, color: promo.color || '#cc0000' }, { onConflict: 'id' }); }
@@ -875,10 +973,80 @@ app.post('/api/admin/save', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
 });
 
+// Bouton maintenance du panel : enregistre ET vérifie que la base a bien pris le changement
+app.post('/api/admin/maintenance', requireAdmin, async (req, res) => {
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'Valeur invalide : "enabled" doit être true ou false.' });
+  try {
+    const { error } = await supabase.from('site_config').upsert({ key: 'maintenance_mode', value: enabled ? 'true' : 'false' }, { onConflict: 'key' });
+    if (error) throw error;
+    invalidateMaintenanceCache();
+    invalidatePublicCache();
+    const actual = await isMaintenanceMode();
+    if (actual !== enabled) return res.status(500).json({ error: "La base de données n'a pas enregistré le changement.", maintenance: actual });
+    console.log(`🔧 Maintenance ${enabled ? 'ACTIVÉE' : 'DÉSACTIVÉE'} par ${req.session.user.username}`);
+    res.json({ success: true, maintenance: actual });
+  } catch (err) {
+    console.error('❌ Erreur /api/admin/maintenance :', err);
+    res.status(500).json({ error: 'Erreur sauvegarde maintenance : ' + err.message });
+  }
+});
+
 // ── 12. API COMMANDE ──────────────────────────────────────────
+// ── Regroupement des commandes dans un ticket déjà ouvert ─────
+// Option activable dans le panel admin (clé site_config "merge_orders", activée par défaut)
+async function isMergeOrdersEnabled() {
+  try {
+    const { data, error } = await supabase.from('site_config').select('value').eq('key', 'merge_orders').maybeSingle();
+    if (error) throw error;
+    if (!data) return true; // jamais réglée → activée par défaut
+    return String(data.value).trim().toLowerCase() !== 'false';
+  } catch (e) {
+    console.warn('⚠️  Lecture merge_orders impossible :', e.message);
+    return true;
+  }
+}
+
+// Cherche un ticket encore ouvert pour ce client : un salon "ticket-..." de la catégorie
+// des tickets où le client a une permission personnelle. Un ticket fermé avec !close
+// est supprimé, donc il ne sera jamais retrouvé.
+function findOpenTicketChannel(guild, discordId) {
+  const tickets = guild.channels.cache.filter(ch =>
+    ch.parentId === TICKET_CAT_ID &&
+    ch.name?.startsWith('ticket-') &&
+    ch.isTextBased?.() &&
+    ch.permissionOverwrites?.cache.get(discordId)?.type === 1 // 1 = permission d'un membre (pas d'un rôle)
+  );
+  if (!tickets.size) return null;
+  return [...tickets.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp)[0]; // le plus récent
+}
+
+// Verrou par client : si le client clique 2 fois très vite, les commandes sont traitées
+// l'une après l'autre (sinon les 2 créeraient chacune un ticket en même temps)
+const orderLocks = new Map();
+function withUserLock(userId, task) {
+  const previous = orderLocks.get(userId) || Promise.resolve();
+  const current  = previous.catch(() => {}).then(task);
+  orderLocks.set(userId, current);
+  current.finally(() => { if (orderLocks.get(userId) === current) orderLocks.delete(userId); }).catch(() => {});
+  return current;
+}
+
+// Anti-doublon : même panier renvoyé par le même client en moins de 2 minutes = ignoré
+const lastOrders = new Map(); // discordId → { signature, time, result }
+const DUPLICATE_WINDOW = 2 * 60 * 1000;
+function orderSignature(items, coreOption) {
+  return JSON.stringify({
+    core: coreOption,
+    items: items.map(i => [i.id, i.quantity, !!i.options?.debadgage, !!i.options?.retexture]).sort()
+  });
+}
+
 app.post('/api/order', async (req, res) => {
-  const { items, discordUser } = req.body;
-  if (!discordUser?.id || !discordUser?.username) return res.status(401).json({ error: 'Vous devez être connecté avec Discord pour passer commande.' });
+  const { items } = req.body;
+  // Sécurité : l'identité vient de la session Discord (côté serveur), jamais du navigateur
+  const sessionUser = req.session?.user;
+  if (!sessionUser?.id || !sessionUser?.username) return res.status(401).json({ error: 'Vous devez être connecté avec Discord pour passer commande.' });
   if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
   if (items.length > 20) return res.status(400).json({ error: 'Trop d\'articles dans le panier.' });
   for (const item of items) { if (!item.id || typeof item.id !== 'string') return res.status(400).json({ error: 'Article invalide (id manquant).' }); if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' }); }
@@ -893,33 +1061,72 @@ app.post('/api/order', async (req, res) => {
     const serverPrice = parseFloat(dbMod.base_price) * (1 - promoDiscount / 100);
     const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), qty = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
     serverTotal += (serverPrice + extra) * qty;
-    validatedItems.push({ ...item, price: serverPrice, quantity: qty });
+    validatedItems.push({ ...item, name: dbMod.name, price: serverPrice, quantity: qty });
   }
   const coreOption = req.body.coreOption === true;
   if (coreOption) serverTotal += 10;
   serverTotal = Math.round(serverTotal * 100) / 100;
+
+  const discordId = String(sessionUser.id);
+  const username  = sessionUser.username;
+
   try {
-    const guild = discordBot.guilds.cache.first();
-    if (!guild) return res.status(500).json({ error: 'Bot non connecté au serveur Discord.' });
-    let member = null;
-    if (discordUser?.id) { try { member = await guild.members.fetch(discordUser.id); } catch (e) {} }
-    const timestamp = Date.now().toString().slice(-5), username = discordUser?.username || 'visiteur', ticketName = `ticket-${username.toLowerCase().replace(/[^a-z0-9]/g, '')}-${timestamp}`;
-    const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
-    if (member) permissionOverwrites.push({ id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
-    for (const roleId of STAFF_ROLE_IDS) permissionOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages] });
-    const channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${new Date().toLocaleDateString('fr-FR')}` });
-    const itemLines = validatedItems.map(item => { const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), total = (item.price + extra) * item.quantity, optStr = [opts.debadgage ? '🔧 Debadgage (+10€)' : '', opts.retexture ? '🎨 Retexture (+5€)' : ''].filter(Boolean).join(', '); return `> 🔹 **${item.name}** — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`; }).join('\n');
-    const coreLines = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
-    const staffMentions = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
-    const clientMention = member ? `<@${member.id}>` : `**${username}**`;
-    await channel.send([`# 🛒 Nouvelle commande — ${new Date().toLocaleDateString('fr-FR')}`, ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(serverTotal)}**`, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
-    const orderData = { discord_username: username, discord_id: discordUser?.id || null, ticket_channel: ticketName, total_price: serverTotal, items: validatedItems, core_option: coreOption, created_at: new Date().toISOString() };
-    const embed = buildStatusEmbed(orderData, 'pending'), embedMsg = await channel.send({ embeds: [embed] });
-    try { await supabase.from('orders').insert({ ...orderData, channel_id: channel.id, status_message_id: embedMsg.id, status: 'pending' }); } catch (e) { console.warn('Impossible de sauvegarder la commande:', e.message); }
-    console.log(`🎫 Ticket créé : #${ticketName} pour ${username}`);
-    broadcastLive({ type: 'new_order', username, total: serverTotal });
-    res.json({ success: true, ticketChannel: ticketName, channelId: channel.id });
-  } catch (err) { console.error('Erreur création ticket:', err); res.status(500).json({ error: 'Impossible de créer le ticket : ' + err.message }); }
+    const result = await withUserLock(discordId, async () => {
+      // 1. Doublon exact envoyé juste avant → on ne recrée rien
+      const signature = orderSignature(validatedItems, coreOption);
+      const last = lastOrders.get(discordId);
+      if (last && last.signature === signature && Date.now() - last.time < DUPLICATE_WINDOW) {
+        console.log(`♻️  Commande en double ignorée pour ${username}`);
+        return { ...last.result, duplicate: true };
+      }
+
+      const guild = discordBot.guilds.cache.get(config.GUILD_ID) || discordBot.guilds.cache.first();
+      if (!guild) { const e = new Error('Bot non connecté au serveur Discord.'); e.status = 500; throw e; }
+      let member = null;
+      try { member = await guild.members.fetch(discordId); } catch (e) {}
+
+      const itemLines = validatedItems.map(item => { const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), total = (item.price + extra) * item.quantity, optStr = [opts.debadgage ? '🔧 Debadgage (+10€)' : '', opts.retexture ? '🎨 Retexture (+5€)' : ''].filter(Boolean).join(', '); return `> 🔹 **${item.name}**${item.quantity > 1 ? ` ×${item.quantity}` : ''} — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`; }).join('\n');
+      const coreLines     = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
+      const staffMentions = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
+      const clientMention = member ? `<@${member.id}>` : `**${username}**`;
+      const today         = new Date().toLocaleDateString('fr-FR');
+
+      // 2. Ticket déjà ouvert ? (seulement si l'option est activée)
+      let channel = null, merged = false;
+      if (await isMergeOrdersEnabled()) channel = findOpenTicketChannel(guild, discordId);
+
+      if (channel) {
+        merged = true;
+        await channel.send([`# ➕ Commande supplémentaire — ${today}`, ``, `**Client :** ${clientMention}`, `**Total de cette commande :** **${formatPrice(serverTotal)}**`, ``, `## 📦 Articles ajoutés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions].join('\n'));
+      } else {
+        // 3. Sinon : nouveau ticket (comportement d'origine)
+        const timestamp  = Date.now().toString().slice(-5);
+        const ticketName = `ticket-${username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}-${timestamp}`;
+        const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
+        if (member) permissionOverwrites.push({ id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+        for (const roleId of STAFF_ROLE_IDS) permissionOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages] });
+        channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${today}` });
+        await channel.send([`# 🛒 Nouvelle commande — ${today}`, ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(serverTotal)}**`, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
+      }
+
+      // 4. Embed de statut + enregistrement (une ligne par commande, même si le ticket est partagé)
+      const orderData = { discord_username: username, discord_id: discordId, ticket_channel: channel.name, total_price: serverTotal, items: validatedItems, core_option: coreOption, created_at: new Date().toISOString() };
+      const embedMsg  = await channel.send({ embeds: [buildStatusEmbed(orderData, 'pending')] });
+      const { error: insertError } = await supabase.from('orders').insert({ ...orderData, channel_id: channel.id, status_message_id: embedMsg.id, status: 'pending' });
+      if (insertError) console.warn('Impossible de sauvegarder la commande:', insertError.message);
+
+      console.log(merged ? `➕ Commande ajoutée au ticket #${channel.name} (${username})` : `🎫 Ticket créé : #${channel.name} pour ${username}`);
+      broadcastLive({ type: 'new_order', username, total: serverTotal });
+
+      const response = { success: true, ticketChannel: channel.name, channelId: channel.id, merged };
+      lastOrders.set(discordId, { signature, time: Date.now(), result: response });
+      return response;
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Erreur création ticket:', err);
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Impossible de créer le ticket : ' + err.message });
+  }
 });
 
 // ── 13. CGVU & LÉGAL ─────────────────────────────────────────
