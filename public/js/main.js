@@ -624,6 +624,97 @@ let cart = JSON.parse(localStorage.getItem('cacsCart') || '[]');
 
 function saveCart() { localStorage.setItem('cacsCart', JSON.stringify(cart)); updateCartUI(); sendVisitorPing(); }
 
+// ═══════════════ CODE PROMO ═══════════════
+// Le code appliqué est gardé dans le navigateur ; le serveur le revérifie à la commande.
+let appliedPromo = null;
+try { appliedPromo = JSON.parse(localStorage.getItem('cacsPromo') || 'null'); } catch { appliedPromo = null; }
+let _promoChecking = false;
+
+function savePromoState() {
+  try {
+    if (appliedPromo) localStorage.setItem('cacsPromo', JSON.stringify(appliedPromo));
+    else localStorage.removeItem('cacsPromo');
+  } catch { /* stockage indisponible */ }
+}
+
+// Total du panier AVANT code promo (articles + options + [CORE])
+function getCartSubtotal() {
+  const coreOption = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
+  return cart.reduce((sum, i) => { const opts = i.options || {}; const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0); return sum + (i.price + extra) * i.quantity; }, 0) + coreOption;
+}
+
+// Réduction apportée par le code promo pour un sous-total donné
+function getPromoDiscount(subtotal) {
+  if (!appliedPromo || subtotal < (appliedPromo.minOrder || 0)) return 0;
+  const raw = appliedPromo.discountType === 'fixed' ? appliedPromo.discountValue : subtotal * appliedPromo.discountValue / 100;
+  return Math.round(Math.min(raw, subtotal) * 100) / 100;
+}
+
+function renderPromoZone(subtotal) {
+  const zone = document.getElementById('cartPromo');
+  if (!zone) return;
+  const typed = document.getElementById('cartPromoInput')?.value || ''; // garde ce que le client tapait
+  if (appliedPromo) {
+    const discount = getPromoDiscount(subtotal);
+    const tooLow   = subtotal < (appliedPromo.minOrder || 0);
+    const label    = appliedPromo.discountType === 'fixed' ? `-${formatPrice(appliedPromo.discountValue)}` : `-${appliedPromo.discountValue}%`;
+    zone.innerHTML = `
+      <div class="cart-promo-applied ${tooLow ? 'warning' : ''}">
+        <span>🏷️ <strong>${escapeHtml(appliedPromo.code)}</strong> <em>${label}</em></span>
+        <span class="cart-promo-amount">${tooLow ? '' : '-' + formatPrice(discount)}</span>
+        <button type="button" class="cart-promo-remove" onclick="removePromoCode()" title="Retirer le code">✕</button>
+      </div>
+      ${tooLow ? `<div class="cart-promo-msg error">Minimum ${formatPrice(appliedPromo.minOrder)} de commande pour ce code.</div>` : ''}`;
+  } else {
+    zone.innerHTML = `
+      <div class="cart-promo-form">
+        <input type="text" id="cartPromoInput" placeholder="Code promo" maxlength="30" autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();applyPromoCode();}">
+        <button type="button" id="cartPromoBtn" onclick="applyPromoCode()">Appliquer</button>
+      </div>
+      <div class="cart-promo-msg" id="cartPromoMsg"></div>`;
+    const input = document.getElementById('cartPromoInput');
+    if (input && typed) input.value = typed;
+  }
+}
+
+async function applyPromoCode() {
+  if (_promoChecking) return;
+  const input = document.getElementById('cartPromoInput');
+  const msg   = document.getElementById('cartPromoMsg');
+  const btn   = document.getElementById('cartPromoBtn');
+  const code  = (input?.value || '').trim().toUpperCase();
+  const showMsg = (text, isError = true) => { if (msg) { msg.textContent = text; msg.className = 'cart-promo-msg ' + (isError ? 'error' : 'ok'); } };
+  if (!code) { showMsg('Entre un code promo.'); return; }
+  if (!userData?.connected) { showMsg('Connecte-toi avec Discord pour utiliser un code promo.'); return; }
+  if (cart.length === 0) { showMsg('Ton panier est vide.'); return; }
+  _promoChecking = true;
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const coreOption = document.getElementById('cartCoreOption')?.checked || false;
+    const res = await fetch('/api/promo/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: cart, coreOption, code }) });
+    let result = {};
+    try { result = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok || !result.valid) { showMsg(result.error || 'Code promo invalide.'); return; }
+    appliedPromo = { code: result.code, discountType: result.discountType, discountValue: result.discountValue, minOrder: result.minOrder || 0 };
+    savePromoState();
+    renderCartItems();
+    showToast(`🏷️ Code ${result.code} appliqué : -${formatPrice(result.discount)}`);
+  } catch (e) {
+    console.error('Erreur code promo :', e);
+    showMsg('Erreur de connexion au serveur.');
+  } finally {
+    _promoChecking = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Appliquer'; }
+  }
+}
+
+function removePromoCode() {
+  appliedPromo = null;
+  savePromoState();
+  renderCartItems();
+}
+
 function toggleOption(modId, option) {
   const item = cart.find(i => i.id === modId);
   if (!item) return;
@@ -690,8 +781,9 @@ function renderCartItems() {
   if (!container) return;
   if (cart.length === 0) { container.innerHTML = '<div class="cart-empty">Ton panier est vide</div>'; if (footer) footer.style.display = 'none'; return; }
   if (footer) footer.style.display = 'block';
-  const coreOption = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
-  const total = cart.reduce((sum, i) => { const opts = i.options || {}; const extra = (opts.debadgage?10:0)+(opts.retexture?5:0); return sum+(i.price+extra)*i.quantity; }, 0) + coreOption;
+  const subtotal = getCartSubtotal();
+  renderPromoZone(subtotal);
+  const total = subtotal - getPromoDiscount(subtotal);
   if (totalEl) totalEl.textContent = formatPrice(total);
   container.innerHTML = cart.map(item => {
     const opts = item.options || {};
@@ -733,12 +825,10 @@ function openOrderModal() {
   const body    = document.getElementById('orderModalBody');
   if (!overlay || !body) return;
 
-  const coreChecked = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
-  const total       = cart.reduce((sum, i) => {
-    const opts = i.options || {};
-    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
-    return sum + (i.price + extra) * i.quantity;
-  }, 0) + coreChecked;
+  const coreChecked   = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
+  const subtotal      = getCartSubtotal();
+  const promoDiscount = getPromoDiscount(subtotal);
+  const total         = subtotal - promoDiscount;
 
   const itemLines = cart.map(item =>
     `<div class="order-recap-item">
@@ -747,9 +837,11 @@ function openOrderModal() {
      </div>`
   ).join('');
 
-  const coreLineHTML = coreChecked
+  const coreLineHTML = (coreChecked
     ? `<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(10)}</span></div>`
-    : '';
+    : '') + (promoDiscount > 0
+    ? `<div class="order-recap-item" style="color:#4ade80"><span>🏷️ Code ${escapeHtml(appliedPromo.code)}</span><span>-${formatPrice(promoDiscount)}</span></div>`
+    : '');
 
   // ── CAS 1 : non connecté → bloquer la validation ──────────
   if (!userData?.connected) {
@@ -843,11 +935,11 @@ async function confirmOrder() {
   try {
     const coreOption = document.getElementById('cartCoreOption')?.checked || false;
     // L'identité Discord est lue côté serveur (session) : on n'envoie que le panier
-    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, coreOption }) });
+    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, coreOption, promoCode: (appliedPromo && getPromoDiscount(getCartSubtotal()) > 0) ? appliedPromo.code : null }) });
     let result = {};
     try { result = await res.json(); } catch { /* réponse non JSON */ }
     if (res.ok && result.success) {
-      cart = []; saveCart();
+      cart = []; appliedPromo = null; savePromoState(); saveCart();
       const title = result.merged ? 'Commande ajoutée à ton ticket !' : 'Ticket créé avec succès !';
       const text  = result.merged
         ? 'Tu avais déjà un ticket ouvert : ta nouvelle commande y a été ajoutée.<br>Notre équipe va la traiter avec le reste.'
@@ -856,6 +948,15 @@ async function confirmOrder() {
       if (body) body.innerHTML = `<div class="order-success"><div class="success-icon">${result.merged ? '➕' : '🎫'}</div><h4>${title}</h4><p>${text}</p><div class="ticket-link">#${escapeHtml(result.ticketChannel)}</div></div><div style="margin-top:18px"><button onclick="closeOrderModal()" style="width:100%;background:var(--blue);border:none;color:#fff;padding:11px;border-radius:4px;font-weight:700;font-size:0.9rem;cursor:pointer;letter-spacing:0.06em">Fermer</button></div>`;
       _orderSending = false;
     } else {
+      if (result.promoError) {
+        // Le code n'est plus valable : on le retire et on remet à jour le panier
+        appliedPromo = null; savePromoState(); renderCartItems();
+        alert('Code promo : ' + result.error + '\n\nLe code a été retiré de ton panier. Vérifie le nouveau total puis valide à nouveau.');
+        closeOrderModal();
+        openCart();
+        _orderSending = false;
+        return;
+      }
       alert('Erreur : ' + (result.error || 'Impossible de créer le ticket.'));
       resetBtn();
     }

@@ -35,7 +35,7 @@ async function saveAll() {
 
 function setSaveStatus(cls, txt) { const el = document.getElementById('saveStatus'); el.className = 'save-status ' + cls; el.textContent = txt; }
 
-const tabTitles = { dashboard:'Dashboard', live:'Temps réel', orders:'Commandes', stats:'Statistiques', mods:'Gérer les mods', categories:'Gérer les catégories', promos:'Gérer les promotions', roles:'Rôles Discord & Réductions', config:'Configuration du site', settings:'Paramètres' };
+const tabTitles = { dashboard:'Dashboard', live:'Temps réel', orders:'Commandes', stats:'Statistiques', mods:'Gérer les mods', categories:'Gérer les catégories', promos:'Gérer les promotions', codes:'Codes promo', roles:'Rôles Discord & Réductions', config:'Configuration du site', settings:'Paramètres' };
 
 function switchTab(tab) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
@@ -46,6 +46,7 @@ function switchTab(tab) {
   if (tab === 'stats')  loadStats();
   if (tab === 'orders') loadOrders();
   if (tab === 'live')   initLive();
+  if (tab === 'codes')  loadPromoCodes();
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────
@@ -101,7 +102,7 @@ async function loadOrders() {
             <div style="font-size:0.75rem;color:var(--grey-l);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(itemNames)}</div>
             <div style="font-size:0.7rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">#${esc(order.ticket_channel || '')}</div>
           </div>
-          <div style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);text-align:right">${formatEUR(order.total_price)}</div>
+          <div style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);text-align:right">${formatEUR(order.total_price)}</div>${order.promo_code ? `<div style="font-family:var(--mono);font-size:0.7rem;color:#4ade80;text-align:right;margin-top:2px">🏷️ ${esc(order.promo_code)} (-${formatEUR(order.promo_discount)})</div>` : ''}
           <span style="display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.68rem;padding:4px 10px;border-radius:20px;color:${color};border:1px solid ${color}40;background:${color}12;white-space:nowrap">${label}</span>
           <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
             <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
@@ -443,6 +444,130 @@ async function savePromo() {
 }
 function deletePromo(index) { if (!confirm(`Supprimer "${data.promotions[index]?.name}" ?`)) return; data.promotions.splice(index, 1); saveAll(); renderPromosList(); renderDashboard(); showToast('Promotion supprimée'); }
 function closePromoModal() { closeModal('promoModal'); }
+
+// ─── CODES PROMO ─────────────────────────────────────────────
+let promoCodes = [];
+const euro = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(Number(n) || 0);
+
+async function loadPromoCodes() {
+  const list = document.getElementById('codesList');
+  try {
+    const res = await fetch('/api/admin/promo-codes', { credentials: 'same-origin' });
+    let body = [];
+    try { body = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(body.error || `Erreur HTTP ${res.status}`);
+    promoCodes = Array.isArray(body) ? body : [];
+    renderPromoCodes();
+  } catch (e) {
+    console.error('Erreur chargement codes promo :', e);
+    if (list) list.innerHTML = `<p style="color:#f87171;font-size:0.9rem">❌ ${esc(e.message)}<br><span style="color:var(--grey-m)">As-tu bien exécuté le script SQL « promo_codes » dans Supabase ?</span></p>`;
+  }
+}
+
+function renderPromoCodes() {
+  const list = document.getElementById('codesList');
+  if (!list) return;
+  if (promoCodes.length === 0) { list.innerHTML = '<p style="color:var(--grey-m);font-size:0.9rem">Aucun code promo. Clique sur « + Créer un code ».</p>'; return; }
+  const now = new Date();
+  list.innerHTML = promoCodes.map((c, i) => {
+    const expired   = c.expires_at && new Date(c.expires_at) <= now;
+    const exhausted = c.max_uses !== null && c.uses >= c.max_uses;
+    const badgeStyle = 'font-family:var(--mono);font-size:0.7rem;padding:3px 10px;border-radius:20px';
+    const badge = !c.active ? '<span class="item-badge badge-hidden">Inactif</span>'
+      : expired   ? `<span class="item-badge" style="background:rgba(249,115,22,0.1);color:#fb923c;border:1px solid rgba(249,115,22,0.3);${badgeStyle}">Expiré</span>`
+      : exhausted ? `<span class="item-badge" style="background:rgba(249,115,22,0.1);color:#fb923c;border:1px solid rgba(249,115,22,0.3);${badgeStyle}">Épuisé</span>`
+      : `<span class="item-badge" style="background:rgba(34,197,94,0.1);color:#4ade80;border:1px solid rgba(34,197,94,0.3);${badgeStyle}">Actif</span>`;
+    const value = c.discount_type === 'fixed' ? `-${euro(c.discount_value)}` : `-${Number(c.discount_value)}%`;
+    const meta = [
+      `Utilisé ${c.uses}${c.max_uses !== null ? ' / ' + c.max_uses : ''} fois`,
+      Number(c.min_order) > 0 ? `min. ${euro(c.min_order)}` : null,
+      c.one_per_user ? '1 fois par client' : 'illimité par client',
+      c.expires_at ? `expire le ${new Date(c.expires_at).toLocaleDateString('fr-FR')} à ${new Date(c.expires_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : "pas d'expiration",
+      c.description ? esc(c.description) : null
+    ].filter(Boolean).join(' · ');
+    return `<div class="item-row"><div class="item-cat-dot" style="background:#4ade80"></div><div class="item-info"><div class="item-name"><span style="font-family:var(--mono);letter-spacing:0.05em">${esc(c.code)}</span> — ${value}</div><div class="item-meta">${meta}</div></div>${badge}<div class="item-actions"><button class="btn-icon" title="Copier le code" onclick="copyPromoCode(${i})">📋</button><button class="btn-icon" onclick="openCodeModal(${i})">✏️</button><button class="btn-icon del" onclick="deleteCode(${i})">🗑️</button></div></div>`;
+  }).join('');
+}
+
+function openCodeModal(index = null) {
+  const c = index !== null ? promoCodes[index] : null;
+  document.getElementById('codeModalTitle').textContent = c ? 'Modifier le code promo' : 'Nouveau code promo';
+  document.getElementById('codeId').value       = c ? c.id : '';
+  document.getElementById('codeCode').value     = c ? c.code : '';
+  document.getElementById('codeDesc').value     = c ? (c.description || '') : '';
+  document.getElementById('codeType').value     = c ? c.discount_type : 'percent';
+  document.getElementById('codeValue').value    = c ? Number(c.discount_value) : 10;
+  document.getElementById('codeMinOrder').value = c && Number(c.min_order) > 0 ? Number(c.min_order) : '';
+  document.getElementById('codeMaxUses').value  = c && c.max_uses !== null ? c.max_uses : '';
+  document.getElementById('codeExpires').value  = c && c.expires_at ? toDatetimeLocal(c.expires_at) : '';
+  setToggle('toggleCodeOnePerUser', c ? c.one_per_user : true);
+  setToggle('toggleCodeActive', c ? c.active : true);
+  openModal('codeModal');
+  setTimeout(() => document.getElementById('codeCode').focus(), 50);
+}
+
+function closeCodeModal() { closeModal('codeModal'); }
+
+let _codeSaving = false;
+async function saveCode() {
+  if (_codeSaving) return;
+  const code = document.getElementById('codeCode').value.trim().toUpperCase().replace(/\s+/g, '');
+  const discountType = document.getElementById('codeType').value;
+  const discountValue = parseFloat(document.getElementById('codeValue').value);
+  if (!/^[A-Z0-9_-]{3,30}$/.test(code)) { alert('Le code doit faire 3 à 30 caractères : lettres, chiffres, - ou _ (sans espace ni accent).'); return; }
+  if (!(discountValue > 0)) { alert('La valeur de la réduction doit être supérieure à 0.'); return; }
+  if (discountType === 'percent' && discountValue > 100) { alert('Une réduction en % ne peut pas dépasser 100.'); return; }
+  const expiresRaw = document.getElementById('codeExpires').value;
+  const payload = {
+    id: document.getElementById('codeId').value || undefined,
+    code, discountType, discountValue,
+    description: document.getElementById('codeDesc').value.trim(),
+    minOrder: parseFloat(document.getElementById('codeMinOrder').value) || 0,
+    maxUses: document.getElementById('codeMaxUses').value === '' ? null : parseInt(document.getElementById('codeMaxUses').value),
+    expiresAt: expiresRaw ? new Date(expiresRaw).toISOString() : null,
+    onePerUser: isToggleOn('toggleCodeOnePerUser'),
+    active: isToggleOn('toggleCodeActive')
+  };
+  _codeSaving = true;
+  const btn = document.getElementById('codeSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sauvegarde...'; }
+  try {
+    const res = await fetch('/api/admin/promo-codes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(payload) });
+    let body = {};
+    try { body = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(body.error || `Erreur HTTP ${res.status}`);
+    closeCodeModal();
+    await loadPromoCodes();
+    showToast(payload.id ? `Code ${code} mis à jour !` : `Code ${code} créé !`);
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  } finally {
+    _codeSaving = false;
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Sauvegarder'; }
+  }
+}
+
+async function deleteCode(index) {
+  const c = promoCodes[index];
+  if (!c || !confirm(`Supprimer le code "${c.code}" ?\n\nLes commandes déjà passées avec ce code ne sont pas modifiées.`)) return;
+  try {
+    const res = await fetch(`/api/admin/promo-codes/${encodeURIComponent(c.id)}`, { method: 'DELETE', credentials: 'same-origin' });
+    let body = {};
+    try { body = await res.json(); } catch { /* réponse non JSON */ }
+    if (!res.ok) throw new Error(body.error || `Erreur HTTP ${res.status}`);
+    await loadPromoCodes();
+    showToast(`Code ${c.code} supprimé`);
+  } catch (e) {
+    showToast('Suppression impossible : ' + e.message, true);
+  }
+}
+
+async function copyPromoCode(index) {
+  const c = promoCodes[index];
+  if (!c) return;
+  try { await navigator.clipboard.writeText(c.code); showToast(`📋 ${c.code} copié`); }
+  catch { prompt('Copie le code :', c.code); }
+}
 
 // ─── RÔLES ───────────────────────────────────────────────────
 function renderRolesList() {

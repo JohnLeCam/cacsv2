@@ -205,6 +205,7 @@
         <div class="nav-item"        data-tab="mods"       onclick="switchTab('mods')">      <span class="nav-icon">🎮</span> Mods</div>
         <div class="nav-item"        data-tab="categories" onclick="switchTab('categories')"><span class="nav-icon">🏷️</span> Catégories</div>
         <div class="nav-item"        data-tab="promos"     onclick="switchTab('promos')">    <span class="nav-icon">🔥</span> Promotions</div>
+        <div class="nav-item"        data-tab="codes"      onclick="switchTab('codes')">     <span class="nav-icon">🏷️</span> Codes promo</div>
         <div class="nav-item"        data-tab="roles"      onclick="switchTab('roles')">     <span class="nav-icon">🎖️</span> Rôles Discord</div>
         <div class="nav-item"        data-tab="config"     onclick="switchTab('config')">    <span class="nav-icon">⚙️</span> Configuration</div>
         <div class="nav-item"        data-tab="settings"   onclick="switchTab('settings')">  <span class="nav-icon">🔒</span> Paramètres</div>
@@ -316,6 +317,17 @@
           <div class="card">
             <div class="card-header"><span class="card-title">Promotions actives</span><button class="btn btn-red btn-sm" onclick="openPromoModal()">+ Ajouter une promo</button></div>
             <div class="card-body"><div class="items-list" id="promosList"></div></div>
+          </div>
+        </div>
+
+        <!-- CODES PROMO -->
+        <div class="tab-pane" id="tab-codes">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Codes promo</span><button class="btn btn-red btn-sm" onclick="openCodeModal()">+ Créer un code</button></div>
+            <div class="card-body">
+              <p style="color:var(--grey-l);font-size:0.85rem;margin-bottom:16px">Le client saisit le code dans son panier. La réduction s'applique <strong>après</strong> les promotions et les réductions de rôle, sur le total (options et [CORE] compris).</p>
+              <div class="items-list" id="codesList"><p style="color:var(--grey-m);font-size:0.9rem">Chargement...</p></div>
+            </div>
           </div>
         </div>
 
@@ -502,6 +514,28 @@
         </div>
       </div>
       <div class="modal-footer"><button class="btn btn-ghost" onclick="closePromoModal()">Annuler</button><button class="btn btn-red" onclick="savePromo()">💾 Sauvegarder</button></div>
+    </div>
+  </div>
+
+  <!-- MODALE CODE PROMO -->
+  <div class="modal-overlay" id="codeModal" onclick="if(event.target===this)closeCodeModal()">
+    <div class="modal">
+      <div class="modal-header"><span class="modal-title" id="codeModalTitle">Nouveau code promo</span><button class="modal-close" onclick="closeCodeModal()">✕</button></div>
+      <div class="modal-body">
+        <input type="hidden" id="codeId">
+        <div class="form-grid">
+          <div class="form-group full"><label>Code</label><input type="text" id="codeCode" placeholder="NOEL20" maxlength="30" style="text-transform:uppercase;font-family:var(--mono);letter-spacing:0.08em"><small style="color:var(--grey-m);font-size:0.75rem;margin-top:4px;display:block">3 à 30 caractères : lettres, chiffres, - ou _ (sans espace ni accent)</small></div>
+          <div class="form-group full"><label>Note interne (optionnel)</label><input type="text" id="codeDesc" placeholder="Partenariat serveur XYZ" maxlength="200"></div>
+          <div class="form-group"><label>Type de réduction</label><select id="codeType"><option value="percent">Pourcentage (%)</option><option value="fixed">Montant fixe (€)</option></select></div>
+          <div class="form-group"><label>Valeur</label><input type="number" id="codeValue" placeholder="20" min="0.01" step="0.01"></div>
+          <div class="form-group"><label>Commande minimum (€)</label><input type="number" id="codeMinOrder" placeholder="0" min="0" step="0.01"></div>
+          <div class="form-group"><label>Utilisations max (vide = illimité)</label><input type="number" id="codeMaxUses" placeholder="Illimité" min="1" step="1"></div>
+          <div class="form-group full"><label>Expire le (vide = jamais)</label><input type="datetime-local" id="codeExpires"></div>
+          <div class="form-group"><label>&nbsp;</label><div class="toggle-wrap" onclick="document.getElementById('toggleCodeOnePerUser').classList.toggle('on')"><button class="toggle on" id="toggleCodeOnePerUser" type="button"></button><span class="toggle-label">👤 1 fois par client</span></div></div>
+          <div class="form-group"><label>&nbsp;</label><div class="toggle-wrap" onclick="document.getElementById('toggleCodeActive').classList.toggle('on')"><button class="toggle on" id="toggleCodeActive" type="button"></button><span class="toggle-label">✅ Code actif</span></div></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeCodeModal()">Annuler</button><button class="btn btn-red" id="codeSaveBtn" onclick="saveCode()">💾 Sauvegarder</button></div>
     </div>
   </div>
 

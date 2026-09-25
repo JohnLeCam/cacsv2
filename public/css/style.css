@@ -1868,3 +1868,81 @@ button { cursor: pointer; font-family: var(--font-ui); }
   .countdown-units { gap: 6px; }
   .countdown-value { width: 44px; font-size: 1.3rem; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   PANIER — CODE PROMO
+═══════════════════════════════════════════════════════════════ */
+.cart-promo { margin-bottom: 12px; }
+
+.cart-promo-form { display: flex; gap: 8px; }
+
+.cart-promo-form input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-1);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  color: var(--white);
+  padding: 9px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.cart-promo-form input:focus { border-color: var(--blue-light); }
+.cart-promo-form input::placeholder { text-transform: none; letter-spacing: 0; color: var(--grey-mid); }
+
+.cart-promo-form button {
+  background: transparent;
+  border: 1px solid var(--blue-light);
+  color: var(--blue-light);
+  border-radius: var(--radius);
+  padding: 0 14px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.cart-promo-form button:hover:not(:disabled) { background: var(--blue-light); color: #fff; }
+.cart-promo-form button:disabled { opacity: 0.5; cursor: wait; }
+
+.cart-promo-msg { font-size: 0.78rem; margin-top: 6px; min-height: 0; }
+.cart-promo-msg:empty { display: none; }
+.cart-promo-msg.error { color: #f87171; }
+.cart-promo-msg.ok    { color: #4ade80; }
+
+.cart-promo-applied {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  color: var(--white);
+}
+
+.cart-promo-applied.warning { background: rgba(249, 115, 22, 0.08); border-color: rgba(249, 115, 22, 0.35); }
+.cart-promo-applied > span:first-child { flex: 1; }
+.cart-promo-applied strong { font-family: var(--font-mono); letter-spacing: 0.05em; }
+.cart-promo-applied em { font-style: normal; font-size: 0.78rem; color: var(--grey-light); margin-left: 4px; }
+.cart-promo-amount { font-family: var(--font-mono); color: #4ade80; font-weight: 700; }
+
+.cart-promo-remove {
+  background: transparent;
+  border: none;
+  color: var(--grey-light);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 2px 4px;
+  transition: color 0.2s;
+}
+
+.cart-promo-remove:hover { color: #f87171; }

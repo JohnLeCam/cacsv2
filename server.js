@@ -993,6 +993,120 @@ app.post('/api/admin/maintenance', requireAdmin, async (req, res) => {
 });
 
 // ── 12. API COMMANDE ──────────────────────────────────────────
+// ── CODES PROMO & CALCUL DU PANIER ────────────────────────────
+// Tous les prix sont recalculés ici, côté serveur : le navigateur ne décide jamais du prix.
+const round2 = (n) => Math.round(n * 100) / 100;
+function normalizePromoCode(code) { return String(code || '').trim().toUpperCase().replace(/\s+/g, ''); }
+const PROMO_CODE_REGEX = /^[A-Z0-9_-]{3,30}$/;
+
+// Meilleure réduction de rôle Discord du client (même règle que /api/user)
+async function getUserRoleDiscount(user) {
+  if (!Array.isArray(user?.roles) || !user.roles.length) return 0;
+  const roles = await getDiscordRoles();
+  let best = 0;
+  for (const r of roles) { const d = Number(r.discount) || 0; if (user.roles.includes(r.role_id) && d > best) best = d; }
+  return best;
+}
+
+// Vérifie le panier et calcule le sous-total (promos de catégorie + réduction de rôle + options)
+async function computeCart(items, coreOption, user) {
+  const [dbMods, activePromos, roleDiscount] = await Promise.all([getMods(true), getPromotions(true), getUserRoleDiscount(user)]);
+  let subtotal = 0; const validatedItems = [];
+  for (const item of items) {
+    const dbMod = dbMods.find(m => m.id === item.id);
+    if (!dbMod) { const e = new Error(`Mod introuvable : ${item.id}`); e.status = 400; throw e; }
+    let promoDiscount = 0;
+    for (const p of activePromos) { if (!p.apply_to_categories?.length || p.apply_to_categories.includes(dbMod.category)) { if (p.discount_percent > promoDiscount) promoDiscount = p.discount_percent; } }
+    const totalDiscount = Math.min(roleDiscount + promoDiscount, 100);
+    const serverPrice = parseFloat(dbMod.base_price) * (1 - totalDiscount / 100);
+    const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), qty = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
+    subtotal += (serverPrice + extra) * qty;
+    validatedItems.push({ id: dbMod.id, name: dbMod.name, price: serverPrice, quantity: qty, options: { debadgage: !!opts.debadgage, retexture: !!opts.retexture } });
+  }
+  if (coreOption) subtotal += 10;
+  return { validatedItems, subtotal: round2(subtotal), roleDiscount };
+}
+
+// Vérifie un code promo pour un client et un sous-total donnés (ne consomme PAS le code)
+async function checkPromoCode(rawCode, subtotal, discordId) {
+  const code = normalizePromoCode(rawCode);
+  if (!PROMO_CODE_REGEX.test(code)) return { ok: false, error: 'Code promo invalide.' };
+  const { data: promo, error } = await supabase.from('promo_codes').select('*').eq('code', code).maybeSingle();
+  if (error) throw error;
+  if (!promo || !promo.active) return { ok: false, error: 'Code promo invalide.' };
+  if (promo.expires_at && new Date(promo.expires_at) <= new Date()) return { ok: false, error: 'Ce code promo a expiré.' };
+  if (promo.max_uses !== null && promo.uses >= promo.max_uses) return { ok: false, error: "Ce code promo a atteint sa limite d'utilisations." };
+  const minOrder = Number(promo.min_order) || 0;
+  if (subtotal < minOrder) return { ok: false, error: `Ce code nécessite une commande d'au moins ${formatPrice(minOrder)}.` };
+  if (promo.one_per_user && discordId) {
+    const { count, error: countError } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('discord_id', String(discordId)).eq('promo_code', code).neq('status', 'cancelled');
+    if (countError) throw countError;
+    if (count > 0) return { ok: false, error: 'Tu as déjà utilisé ce code promo.' };
+  }
+  const value = Number(promo.discount_value) || 0;
+  const discount = round2(Math.min(promo.discount_type === 'fixed' ? value : subtotal * value / 100, subtotal));
+  return { ok: true, code, discount, total: round2(subtotal - discount), discountType: promo.discount_type, discountValue: value, minOrder };
+}
+
+// Limite anti-devinette : 15 essais de code par tranche de 10 minutes
+const promoCheckLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 15, standardHeaders: true, legacyHeaders: false, message: { error: 'Trop de tentatives de code promo, réessaie dans quelques minutes.' } });
+
+// Le panier demande "ce code est-il valable ?"
+app.post('/api/promo/check', promoCheckLimiter, async (req, res) => {
+  const user = req.session?.user;
+  if (!user?.id) return res.status(401).json({ error: 'Connecte-toi avec Discord pour utiliser un code promo.' });
+  const { items, code } = req.body || {};
+  if (!Array.isArray(items) || !items.length || items.length > 20) return res.status(400).json({ error: 'Panier vide ou invalide.' });
+  try {
+    const { subtotal } = await computeCart(items, req.body.coreOption === true, user);
+    const result = await checkPromoCode(code, subtotal, user.id);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    res.json({ valid: true, ...result, subtotal });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    console.error('Erreur /api/promo/check :', err);
+    res.status(500).json({ error: 'Erreur lors de la vérification du code.' });
+  }
+});
+
+// ── ADMIN : gestion des codes promo ──
+app.get('/api/admin/promo-codes', requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    res.json(data);
+  } catch (err) { console.error('Erreur lecture codes promo :', err); res.status(500).json({ error: 'Erreur lecture des codes promo : ' + err.message }); }
+});
+
+app.post('/api/admin/promo-codes', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const code = normalizePromoCode(b.code);
+  if (!PROMO_CODE_REGEX.test(code)) return res.status(400).json({ error: 'Le code doit faire 3 à 30 caractères : lettres, chiffres, - ou _ (sans espace ni accent).' });
+  const discountType = b.discountType === 'fixed' ? 'fixed' : 'percent';
+  const discountValue = Number(b.discountValue);
+  if (!(discountValue > 0)) return res.status(400).json({ error: 'La réduction doit être supérieure à 0.' });
+  if (discountType === 'percent' && discountValue > 100) return res.status(400).json({ error: 'Une réduction en % ne peut pas dépasser 100.' });
+  const maxUses = b.maxUses === '' || b.maxUses === null || b.maxUses === undefined ? null : parseInt(b.maxUses);
+  if (maxUses !== null && !(maxUses >= 1)) return res.status(400).json({ error: "Le nombre d'utilisations doit être au moins 1 (ou vide = illimité)." });
+  const expiresAt = b.expiresAt ? new Date(b.expiresAt) : null;
+  if (expiresAt && isNaN(expiresAt)) return res.status(400).json({ error: "Date d'expiration invalide." });
+  const row = { code, discount_type: discountType, discount_value: discountValue, min_order: Math.max(0, Number(b.minOrder) || 0), max_uses: maxUses, one_per_user: b.onePerUser !== false, expires_at: expiresAt ? expiresAt.toISOString() : null, active: b.active !== false, description: String(b.description || '').slice(0, 200) };
+  try {
+    const query = b.id ? supabase.from('promo_codes').update(row).eq('id', b.id).select().single() : supabase.from('promo_codes').insert(row).select().single();
+    const { data, error } = await query;
+    if (error) { if (error.code === '23505') return res.status(400).json({ error: `Le code ${code} existe déjà.` }); throw error; }
+    res.json({ success: true, promoCode: data });
+  } catch (err) { console.error('Erreur sauvegarde code promo :', err); res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
+});
+
+app.delete('/api/admin/promo-codes/:id', requireAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from('promo_codes').delete().eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) { console.error('Erreur suppression code promo :', err); res.status(500).json({ error: 'Erreur suppression : ' + err.message }); }
+});
+
 // ── Regroupement des commandes dans un ticket déjà ouvert ─────
 // Option activable dans le panel admin (clé site_config "merge_orders", activée par défaut)
 async function isMergeOrdersEnabled() {
@@ -1050,22 +1164,11 @@ app.post('/api/order', async (req, res) => {
   if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
   if (items.length > 20) return res.status(400).json({ error: 'Trop d\'articles dans le panier.' });
   for (const item of items) { if (!item.id || typeof item.id !== 'string') return res.status(400).json({ error: 'Article invalide (id manquant).' }); if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' }); }
-  let dbMods, activePromos;
-  try { [dbMods, activePromos] = await Promise.all([getMods(true), getPromotions(true)]); } catch (e) { return res.status(500).json({ error: 'Erreur lecture base de données.' }); }
-  let serverTotal = 0; const validatedItems = [];
-  for (const item of items) {
-    const dbMod = dbMods.find(m => m.id === item.id);
-    if (!dbMod) return res.status(400).json({ error: `Mod introuvable : ${item.id}` });
-    let promoDiscount = 0;
-    for (const p of activePromos) { if (!p.apply_to_categories?.length || p.apply_to_categories.includes(dbMod.category)) { if (p.discount_percent > promoDiscount) promoDiscount = p.discount_percent; } }
-    const serverPrice = parseFloat(dbMod.base_price) * (1 - promoDiscount / 100);
-    const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), qty = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
-    serverTotal += (serverPrice + extra) * qty;
-    validatedItems.push({ ...item, name: dbMod.name, price: serverPrice, quantity: qty });
-  }
   const coreOption = req.body.coreOption === true;
-  if (coreOption) serverTotal += 10;
-  serverTotal = Math.round(serverTotal * 100) / 100;
+  const promoCodeInput = req.body.promoCode ? normalizePromoCode(req.body.promoCode) : '';
+  let validatedItems, subtotal;
+  try { ({ validatedItems, subtotal } = await computeCart(items, coreOption, sessionUser)); }
+  catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); return res.status(500).json({ error: 'Erreur lecture base de données.' }); }
 
   const discordId = String(sessionUser.id);
   const username  = sessionUser.username;
@@ -1073,12 +1176,26 @@ app.post('/api/order', async (req, res) => {
   try {
     const result = await withUserLock(discordId, async () => {
       // 1. Doublon exact envoyé juste avant → on ne recrée rien
-      const signature = orderSignature(validatedItems, coreOption);
+      const signature = orderSignature(validatedItems, coreOption) + '|' + promoCodeInput;
       const last = lastOrders.get(discordId);
       if (last && last.signature === signature && Date.now() - last.time < DUPLICATE_WINDOW) {
         console.log(`♻️  Commande en double ignorée pour ${username}`);
         return { ...last.result, duplicate: true };
       }
+
+      // Code promo : vérifié puis "réservé" (compteur +1) AVANT de créer le ticket
+      let serverTotal = subtotal, promo = null, promoReserved = false;
+      if (promoCodeInput) {
+        const check = await checkPromoCode(promoCodeInput, subtotal, discordId);
+        if (!check.ok) { const e = new Error(check.error); e.status = 400; e.promoError = true; throw e; }
+        const { data: reserved, error: rpcError } = await supabase.rpc('use_promo_code', { p_code: check.code });
+        if (rpcError) throw rpcError;
+        if (!reserved) { const e = new Error("Ce code promo n'est plus disponible."); e.status = 409; e.promoError = true; throw e; }
+        promoReserved = true;
+        promo = check;
+        serverTotal = check.total;
+      }
+      try {
 
       const guild = discordBot.guilds.cache.get(config.GUILD_ID) || discordBot.guilds.cache.first();
       if (!guild) { const e = new Error('Bot non connecté au serveur Discord.'); e.status = 500; throw e; }
@@ -1090,6 +1207,9 @@ app.post('/api/order', async (req, res) => {
       const staffMentions = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
       const clientMention = member ? `<@${member.id}>` : `**${username}**`;
       const today         = new Date().toLocaleDateString('fr-FR');
+      const totalLines    = promo
+        ? [`**Sous-total :** ${formatPrice(subtotal)}`, `**🏷️ Code promo \`${promo.code}\` :** -${formatPrice(promo.discount)}`, `**Total :** **${formatPrice(serverTotal)}**`]
+        : [`**Total :** **${formatPrice(serverTotal)}**`];
 
       // 2. Ticket déjà ouvert ? (seulement si l'option est activée)
       let channel = null, merged = false;
@@ -1097,7 +1217,7 @@ app.post('/api/order', async (req, res) => {
 
       if (channel) {
         merged = true;
-        await channel.send([`# ➕ Commande supplémentaire — ${today}`, ``, `**Client :** ${clientMention}`, `**Total de cette commande :** **${formatPrice(serverTotal)}**`, ``, `## 📦 Articles ajoutés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions].join('\n'));
+        await channel.send([`# ➕ Commande supplémentaire — ${today}`, ``, `**Client :** ${clientMention}`, ...totalLines, ``, `## 📦 Articles ajoutés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions].join('\n'));
       } else {
         // 3. Sinon : nouveau ticket (comportement d'origine)
         const timestamp  = Date.now().toString().slice(-5);
@@ -1106,26 +1226,36 @@ app.post('/api/order', async (req, res) => {
         if (member) permissionOverwrites.push({ id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
         for (const roleId of STAFF_ROLE_IDS) permissionOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages] });
         channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${today}` });
-        await channel.send([`# 🛒 Nouvelle commande — ${today}`, ``, `**Client :** ${clientMention}`, `**Total :** **${formatPrice(serverTotal)}**`, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
+        await channel.send([`# 🛒 Nouvelle commande — ${today}`, ``, `**Client :** ${clientMention}`, ...totalLines, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
       }
 
       // 4. Embed de statut + enregistrement (une ligne par commande, même si le ticket est partagé)
       const orderData = { discord_username: username, discord_id: discordId, ticket_channel: channel.name, total_price: serverTotal, items: validatedItems, core_option: coreOption, created_at: new Date().toISOString() };
       const embedMsg  = await channel.send({ embeds: [buildStatusEmbed(orderData, 'pending')] });
-      const { error: insertError } = await supabase.from('orders').insert({ ...orderData, channel_id: channel.id, status_message_id: embedMsg.id, status: 'pending' });
+      const orderRow = { ...orderData, channel_id: channel.id, status_message_id: embedMsg.id, status: 'pending' };
+      let { error: insertError } = await supabase.from('orders').insert(promo ? { ...orderRow, promo_code: promo.code, promo_discount: promo.discount } : orderRow);
+      if (insertError && promo) {
+        console.warn('⚠️  Colonnes promo absentes de "orders" ? Enregistrement sans le code :', insertError.message);
+        ({ error: insertError } = await supabase.from('orders').insert(orderRow));
+      }
       if (insertError) console.warn('Impossible de sauvegarder la commande:', insertError.message);
 
       console.log(merged ? `➕ Commande ajoutée au ticket #${channel.name} (${username})` : `🎫 Ticket créé : #${channel.name} pour ${username}`);
       broadcastLive({ type: 'new_order', username, total: serverTotal });
 
-      const response = { success: true, ticketChannel: channel.name, channelId: channel.id, merged };
+      const response = { success: true, ticketChannel: channel.name, channelId: channel.id, merged, total: serverTotal };
       lastOrders.set(discordId, { signature, time: Date.now(), result: response });
       return response;
+      } catch (innerErr) {
+        // Échec après avoir réservé le code : on rend l'utilisation (compteur -1)
+        if (promoReserved) { try { await supabase.rpc('release_promo_code', { p_code: promo.code }); } catch (e) { console.warn('Impossible de libérer le code promo :', e.message); } }
+        throw innerErr;
+      }
     });
     res.json(result);
   } catch (err) {
     console.error('Erreur création ticket:', err);
-    res.status(err.status || 500).json({ error: err.status ? err.message : 'Impossible de créer le ticket : ' + err.message });
+    res.status(err.status || 500).json({ error: err.status ? err.message : 'Impossible de créer le ticket : ' + err.message, promoError: !!err.promoError });
   }
 });
 
