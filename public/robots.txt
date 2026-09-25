@@ -5,4 +5,4 @@ Disallow: /admin/
 Disallow: /api/
 Disallow: /maintenance
 
-Sitemap: https://cacs-gtavmods.fr/sitemap.xml
+Sitemap: https://www.cacsgtavmods.fr/sitemap.xml

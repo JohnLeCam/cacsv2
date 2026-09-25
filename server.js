@@ -936,7 +936,7 @@ app.post('/api/admin/upload-logo', requireAdmin, async (req, res) => {
 // ── Annonce Discord ───────────────────────────────────────────
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
 const ANNOUNCE_ROLE_ID    = '1489946990405095495';
-const SHOP_URL            = 'https://cacsgtavmods.fr/';
+const SHOP_URL            = `${SITE_BASE_URL}/`;
 const EMBED_BANNER_URL    = 'https://img.draftbot.fr/1773366849212-87a12e25b4502138.png';
 
 app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
@@ -1134,12 +1134,21 @@ app.get('/cgvu',  (req, res) => { res.sendFile(path.join(__dirname, 'public', 'c
 app.get('/legal', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'legal.html')); });
 
 // ── 14. SITEMAP ───────────────────────────────────────────────
+// Liste des vraies pages du site, avec la bonne adresse (www.cacsgtavmods.fr).
+// Les mods ne sont pas listés un par un : leurs liens en "#id" pointent tous vers la
+// même page pour Google (il ignore tout ce qui suit le #), ce qui créait des doublons.
 app.get('/sitemap.xml', async (req, res) => {
   try {
-    const mods = await getMods(true), today = new Date().toISOString().slice(0, 10);
-    const modUrls = mods.map(m => `\n  <url><loc>https://cacs-gtavmods.fr/#${encodeURIComponent(m.id)}</loc><lastmod>${today}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>`).join('');
-    res.header('Content-Type', 'application/xml');
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://cacs-gtavmods.fr/</loc><lastmod>${today}</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>${modUrls}\n</urlset>`);
+    const today = new Date().toISOString().slice(0, 10);
+    const pages = [
+      { loc: `${SITE_BASE_URL}/`,      changefreq: 'daily',   priority: '1.0' },
+      { loc: `${SITE_BASE_URL}/cgvu`,  changefreq: 'monthly', priority: '0.3' },
+      { loc: `${SITE_BASE_URL}/legal`, changefreq: 'monthly', priority: '0.3' }
+    ];
+    const urls = pages.map(p => `  <url><loc>${p.loc}</loc><lastmod>${today}</lastmod><changefreq>${p.changefreq}</changefreq><priority>${p.priority}</priority></url>`).join('\n');
+    res.header('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
   } catch (err) { res.status(500).send('Erreur génération sitemap'); }
 });
 
