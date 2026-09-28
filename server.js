@@ -620,7 +620,12 @@ async function updateDiscordEmbed(order, newStatus) {
 }
 
 // ── 1. BASE ───────────────────────────────────────────────────
-app.use(express.json({ limit: '2mb' }));
+// Les routes d'upload d'image reçoivent l'image en base64 (≈ +37 % de poids) :
+// elles ont droit à une limite plus haute, toutes les autres restent à 2 Mo.
+const jsonSmall = express.json({ limit: '2mb' });
+const jsonLarge = express.json({ limit: '12mb' });
+const LARGE_BODY_ROUTES = new Set(['/api/admin/upload-logo', '/api/admin/upload-embed-banner']);
+app.use((req, res, next) => (LARGE_BODY_ROUTES.has(req.path) ? jsonLarge : jsonSmall)(req, res, next));
 app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
@@ -933,23 +938,161 @@ app.post('/api/admin/upload-logo', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Annonce Discord ───────────────────────────────────────────
+// ── Annonce Discord (embed personnalisable depuis le panel) ──
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID || '';
-const ANNOUNCE_ROLE_ID    = '1489946990405095495';
 const SHOP_URL            = `${SITE_BASE_URL}/`;
-const EMBED_BANNER_URL    = 'https://img.draftbot.fr/1773366849212-87a12e25b4502138.png';
+
+// Valeurs utilisées tant que rien n'a été enregistré depuis le panel (table site_config)
+const EMBED_DEFAULTS = {
+  embed_title:       'NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !',
+  embed_description: "Un nouvel asset est disponible sur notre boutique :\n**{boutique}**\n\n🆕 **{mod}** — {prix}\n\nN'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.\n\nEn cas de besoin, le salon **#🎫︱Creer-Ticket** reste à votre disposition.",
+  embed_color:       '#1abc9c',
+  embed_footer:      "Cac's GTAV Mods",
+  embed_banner_url:  'https://img.draftbot.fr/1773366849212-87a12e25b4502138.png',
+  embed_role_id:     '1489946990405095495',
+};
+const EMBED_KEYS        = Object.keys(EMBED_DEFAULTS);
+const EMBED_ALLOW_EMPTY = new Set(['embed_footer', 'embed_role_id']); // vide = pas de footer / pas de ping
+const EMBED_MAX_IMAGE   = 8 * 1024 * 1024; // 8 Mo
+
+async function getEmbedConfig() {
+  const { data, error } = await supabase.from('site_config').select('key, value').in('key', EMBED_KEYS);
+  if (error) throw error;
+  const cfg = { ...EMBED_DEFAULTS };
+  for (const row of data || []) {
+    const value = row.value == null ? '' : String(row.value);
+    if (value !== '' || EMBED_ALLOW_EMPTY.has(row.key)) cfg[row.key] = value;
+  }
+  return cfg;
+}
+
+// Vérifie les champs texte envoyés par le panel → { values } ou { error }
+function validateEmbedInput(body) {
+  const title       = String(body.title ?? '').trim();
+  const description = String(body.description ?? '').trim();
+  const color       = String(body.color ?? '').trim();
+  const footer      = String(body.footer ?? '').trim();
+  const roleId      = String(body.roleId ?? '').trim();
+  if (!title)                                 return { error: 'Le titre est obligatoire.' };
+  if (title.length > 256)                     return { error: 'Titre trop long (256 caractères max).' };
+  if (!description)                           return { error: 'Le message est obligatoire.' };
+  if (description.length > 4000)              return { error: 'Message trop long (4000 caractères max).' };
+  if (!/^#[0-9a-fA-F]{6}$/.test(color))       return { error: 'Couleur invalide (format attendu : #1abc9c).' };
+  if (footer.length > 2048)                   return { error: 'Pied de page trop long (2048 caractères max).' };
+  if (roleId && !/^\d{17,20}$/.test(roleId))  return { error: "ID du rôle invalide (17 à 20 chiffres, ou vide pour ne pinger personne)." };
+  return { values: { embed_title: title, embed_description: description, embed_color: color.toLowerCase(), embed_footer: footer, embed_role_id: roleId } };
+}
+
+// Remplace {mod}, {prix} et {boutique} dans un texte
+function fillEmbedPlaceholders(text, vars) {
+  return String(text || '').replace(/\{(mod|prix|boutique)\}/gi, (_, k) => vars[k.toLowerCase()] ?? '');
+}
+
+// Construit l'embed d'annonce à partir de la config (même rendu pour l'annonce et pour le test)
+function buildAnnounceEmbed(cfg, { modName = '', modPrice = 0, modLink = '' } = {}) {
+  const vars  = { mod: modName, prix: formatPrice(modPrice), boutique: SHOP_URL };
+  const color = /^#[0-9a-fA-F]{6}$/.test(cfg.embed_color) ? cfg.embed_color : EMBED_DEFAULTS.embed_color;
+  const embed = new EmbedBuilder().setColor(parseInt(color.slice(1), 16));
+
+  const title = fillEmbedPlaceholders(cfg.embed_title, vars).slice(0, 256);
+  if (title) embed.setTitle(title).setURL(modLink || SHOP_URL);
+
+  const description = fillEmbedPlaceholders(cfg.embed_description, vars).slice(0, 4096);
+  if (description) embed.setDescription(description);
+
+  if (cfg.embed_banner_url) embed.setImage(cfg.embed_banner_url);
+
+  const footer = fillEmbedPlaceholders(cfg.embed_footer, vars).slice(0, 2048);
+  if (footer) embed.setFooter({ text: footer });
+  return embed;
+}
+
+// Lire la config de l'embed (panel admin)
+app.get('/api/admin/embed-config', requireAdmin, async (req, res) => {
+  try {
+    res.json({ config: await getEmbedConfig(), defaults: EMBED_DEFAULTS, shopUrl: SHOP_URL, channelConfigured: !!ANNOUNCE_CHANNEL_ID });
+  } catch (err) { res.status(500).json({ error: 'Erreur lecture config embed : ' + err.message }); }
+});
+
+// Enregistrer les textes / couleur / rôle de l'embed
+app.post('/api/admin/embed-config', requireAdmin, async (req, res) => {
+  const check = validateEmbedInput(req.body || {});
+  if (check.error) return res.status(400).json({ error: check.error });
+  try {
+    const rows = Object.entries(check.values).map(([key, value]) => ({ key, value }));
+    const { error } = await supabase.from('site_config').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
+    res.json({ success: true, config: await getEmbedConfig() });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde embed : ' + err.message }); }
+});
+
+// Uploader une nouvelle bannière (même principe que le logo : bucket Supabase "assets")
+app.post('/api/admin/upload-embed-banner', requireAdmin, async (req, res) => {
+  const { imageBase64 } = req.body || {};
+  if (!imageBase64) return res.status(400).json({ error: 'Aucune image fournie.' });
+  const matches = String(imageBase64).match(/^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/);
+  if (!matches) return res.status(400).json({ error: 'Format invalide (PNG, JPG, GIF ou WEBP uniquement).' });
+  try {
+    const mimeType = matches[1];
+    const ext      = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : mimeType.split('/')[1];
+    const buffer   = Buffer.from(matches[2], 'base64');
+    if (buffer.length > EMBED_MAX_IMAGE) return res.status(400).json({ error: 'Image trop lourde (8 Mo max).' });
+    const fileName = `embed-banner.${ext}`;
+    const { error: uploadError } = await supabase.storage.from('assets').upload(fileName, buffer, { contentType: mimeType, upsert: true, cacheControl: '3600' });
+    if (uploadError) throw new Error(uploadError.message);
+    const { data: urlData } = supabase.storage.from('assets').getPublicUrl(fileName);
+    // ?v=... force Discord (et les navigateurs) à recharger l'image au lieu de garder l'ancienne en cache
+    const url = `${urlData.publicUrl}?v=${Date.now()}`;
+    const { error: cfgError } = await supabase.from('site_config').upsert({ key: 'embed_banner_url', value: url }, { onConflict: 'key' });
+    if (cfgError) throw cfgError;
+    res.json({ success: true, url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Remettre la bannière d'origine
+app.post('/api/admin/embed-banner/reset', requireAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from('site_config').upsert({ key: 'embed_banner_url', value: EMBED_DEFAULTS.embed_banner_url }, { onConflict: 'key' });
+    if (error) throw error;
+    res.json({ success: true, url: EMBED_DEFAULTS.embed_banner_url });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Envoyer l'embed en message privé à l'admin connecté (test sans pinger personne)
+app.post('/api/admin/embed-test', requireAdmin, async (req, res) => {
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté, réessaie dans quelques secondes." });
+  const check = validateEmbedInput(req.body || {});
+  if (check.error) return res.status(400).json({ error: check.error });
+  try {
+    const saved = await getEmbedConfig();
+    const cfg   = { ...saved, ...check.values }; // textes du formulaire (même non enregistrés) + bannière enregistrée
+    const user  = await discordBot.users.fetch(req.session.user.id);
+    await user.send({
+      content: '🧪 **Test d\'annonce** — voici le rendu de ton embed (aucun rôle n\'est pingé en test).',
+      embeds:  [buildAnnounceEmbed(cfg, { modName: 'Mod de démonstration', modPrice: 14.99 })],
+      allowedMentions: { parse: [] },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 50007) return res.status(400).json({ error: "Impossible de t'envoyer un MP : autorise les messages privés des membres du serveur dans tes paramètres Discord." });
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
-  const { modName, modLink } = req.body;
+  const { modName, modPrice, modLink } = req.body || {};
   if (!modName) return res.status(400).json({ error: 'Nom du mod manquant.' });
   if (!ANNOUNCE_CHANNEL_ID) return res.status(500).json({ error: 'ANNOUNCE_CHANNEL_ID non configuré.' });
   try {
     const channel = await discordBot.channels.fetch(ANNOUNCE_CHANNEL_ID).catch(() => null);
     if (!channel) return res.status(500).json({ error: `Salon introuvable (${ANNOUNCE_CHANNEL_ID}).` });
-    let description = `Un nouvel asset est disponible sur notre boutique :\n**${SHOP_URL}**\n\n`;
-    if (modLink) description += `🔗 **[Voir le mod directement](${modLink})**\n\n`;
-    description += `Utilisez le lien ci-dessous pour consulter le nouvel asset mis en vente !\n\nN'oubliez pas de vous connecter avec Discord directement sur notre site (connexion sécurisée), ajoutez ensuite les assets souhaités dans votre panier et validez-le. Un ticket avec votre demande sera automatiquement créé sur notre Discord.\n\nEn cas de besoin, le salon **#🎫︱Creer-Ticket** reste à votre disposition.`;
-    await channel.send({ content: `<@&${ANNOUNCE_ROLE_ID}>`, embeds: [new EmbedBuilder().setColor(0x1abc9c).setTitle('NOUVEL ASSET PUBLIÉ SUR NOTRE BOUTIQUE !').setDescription(description).setImage(EMBED_BANNER_URL).setFooter({ text: "Cac's GTAV Mods" })] });
+    const cfg     = await getEmbedConfig();
+    const payload = { embeds: [buildAnnounceEmbed(cfg, { modName, modPrice, modLink })] };
+    if (cfg.embed_role_id) {
+      payload.content         = `<@&${cfg.embed_role_id}>`;
+      payload.allowedMentions = { roles: [cfg.embed_role_id] };
+    }
+    await channel.send(payload);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

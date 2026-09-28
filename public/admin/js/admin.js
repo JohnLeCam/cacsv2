@@ -21,6 +21,7 @@ async function loadAdminData() {
     const res = await fetch('/api/admin/data');
     data = await res.json();
     renderDashboard(); renderModsList(); renderCategoriesList(); renderPromosList(); renderRolesList(); loadConfigForm();
+    loadEmbedConfig(); // config de l'embed Discord (onglet Configuration + modale d'annonce)
   } catch (e) { console.error('Erreur chargement admin:', e); showToast('Erreur lors du chargement des données', true); }
 }
 
@@ -338,17 +339,27 @@ async function saveMod() {
 // ─── 📢 ANNONCE DISCORD ──────────────────────────────────────
 let _pendingAnnounceMod = null;
 
-function openDiscordModal(mod) {
+async function openDiscordModal(mod) {
   _pendingAnnounceMod = mod;
-  // Remplir l'aperçu dans la modale
-  document.getElementById('discordPreviewModName').textContent = mod.name;
-  const priceEl = document.getElementById('discordPreviewPrice');
-  priceEl.textContent = mod.basePrice > 0 ? formatEUR(mod.basePrice) : 'Gratuit';
   // Réinitialiser le bouton d'envoi
   const btn = document.getElementById('btnSendDiscord');
   btn.disabled    = false;
   btn.textContent = '🚀 Envoyer sur Discord';
   openModal('discordModal');
+
+  // Aperçu avec la config ENREGISTRÉE (c'est elle que le serveur utilisera)
+  const preview = document.getElementById('discordModalPreview');
+  const warning = document.getElementById('discordModalWarning');
+  if (!_embedSaved) await loadEmbedConfig();
+  if (!_embedSaved) {
+    preview.innerHTML = '<div style="color:#f87171;font-size:0.8rem">Impossible de charger l\'aperçu (l\'annonce peut quand même être envoyée).</div>';
+    warning.textContent = '⚠️ Action irréversible';
+    return;
+  }
+  preview.innerHTML = buildDiscordPreviewHTML(_embedSaved, { mod: mod.name, price: mod.basePrice });
+  warning.innerHTML = _embedSaved.embed_role_id
+    ? `⚠️ Le rôle <strong style="color:#c9cdfb">${esc(getRoleLabel(_embedSaved.embed_role_id))}</strong> sera pingé · Action irréversible`
+    : '⚠️ Aucun rôle ne sera pingé · Action irréversible';
 }
 
 function closeDiscordModal(skipped = true) {
@@ -928,6 +939,318 @@ async function uploadServerIcon() {
     btn.style.opacity     = '1';
     btn.style.pointerEvents = 'auto';
   }
+}
+
+// ─── 📢 EMBED DISCORD (personnalisation) ─────────────────────
+let _embedSaved    = null; // config enregistrée côté serveur
+let _embedDefaults = null; // valeurs d'origine
+let _embedShopUrl  = 'https://www.cacsgtavmods.fr/';
+let _embedBannerBase64 = null;
+
+const EMBED_DEFAULT_ROLE_ID = '1489946990405095495';
+
+// Lit une réponse du serveur même si ce n'est pas du JSON (ex. erreur 413 "image trop lourde")
+async function readJsonSafe(res) {
+  try { return await res.json(); }
+  catch {
+    if (res.status === 413) return { error: 'Fichier trop lourd pour le serveur.' };
+    return { error: `Erreur serveur (HTTP ${res.status})` };
+  }
+}
+
+async function loadEmbedConfig() {
+  try {
+    const res    = await fetch('/api/admin/embed-config');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    _embedSaved    = result.config;
+    _embedDefaults = result.defaults;
+    _embedShopUrl  = result.shopUrl || _embedShopUrl;
+    const warn = document.getElementById('embedChannelWarn');
+    if (warn) warn.style.display = result.channelConfigured ? 'none' : 'inline';
+    fillEmbedForm(_embedSaved);
+  } catch (e) {
+    console.error('Erreur chargement config embed :', e);
+    setEmbedStatus('embedSaveStatus', '❌ Impossible de charger la config de l\'embed : ' + e.message, 'error');
+  }
+}
+
+function fillEmbedForm(cfg) {
+  if (!document.getElementById('embedTitle')) return; // sécurité si le HTML n'est pas à jour
+  document.getElementById('embedTitle').value       = cfg.embed_title       || '';
+  document.getElementById('embedDescription').value = cfg.embed_description || '';
+  document.getElementById('embedFooter').value      = cfg.embed_footer      || '';
+  document.getElementById('embedRoleId').value      = cfg.embed_role_id     || '';
+  document.getElementById('embedColor').value       = cfg.embed_color       || '#1abc9c';
+  document.getElementById('embedColorPicker').value = /^#[0-9a-fA-F]{6}$/.test(cfg.embed_color) ? cfg.embed_color : '#1abc9c';
+  onEmbedInput();
+}
+
+// Valeurs actuellement dans le formulaire (format attendu par le serveur)
+function getEmbedFormValues() {
+  return {
+    title:       document.getElementById('embedTitle').value.trim(),
+    description: document.getElementById('embedDescription').value.trim(),
+    color:       document.getElementById('embedColor').value.trim(),
+    footer:      document.getElementById('embedFooter').value.trim(),
+    roleId:      document.getElementById('embedRoleId').value.trim(),
+  };
+}
+
+// Même vérification que le serveur, pour afficher l'erreur tout de suite
+function validateEmbedForm(v) {
+  if (!v.title)                                 return 'Le titre est obligatoire.';
+  if (!v.description)                           return 'Le message est obligatoire.';
+  if (!/^#[0-9a-fA-F]{6}$/.test(v.color))       return 'Couleur invalide (format attendu : #1abc9c).';
+  if (v.roleId && !/^\d{17,20}$/.test(v.roleId)) return 'ID du rôle invalide (17 à 20 chiffres, ou vide).';
+  return null;
+}
+
+// Config "en cours d'édition" = formulaire + bannière (en attente d'upload ou enregistrée)
+function getEmbedDraft() {
+  const v = getEmbedFormValues();
+  return {
+    embed_title:       v.title,
+    embed_description: v.description,
+    embed_color:       v.color,
+    embed_footer:      v.footer,
+    embed_role_id:     v.roleId,
+    embed_banner_url:  _embedBannerBase64 || _embedSaved?.embed_banner_url || _embedDefaults?.embed_banner_url || '',
+  };
+}
+
+function onEmbedInput() {
+  updateEmbedCounter('embedTitle', 'embedTitleCount', 256);
+  updateEmbedCounter('embedDescription', 'embedDescriptionCount', 4000);
+  updateEmbedCounter('embedFooter', 'embedFooterCount', 2048);
+  renderEmbedLivePreview();
+}
+
+function updateEmbedCounter(inputId, counterId, max) {
+  const len = document.getElementById(inputId).value.length;
+  const el  = document.getElementById(counterId);
+  el.textContent = `${len}/${max}`;
+  el.classList.toggle('over', len > max);
+}
+
+function syncEmbedColor(source) {
+  const text   = document.getElementById('embedColor');
+  const picker = document.getElementById('embedColorPicker');
+  if (source === 'picker') text.value = picker.value;
+  else if (/^#[0-9a-fA-F]{6}$/.test(text.value.trim())) picker.value = text.value.trim();
+  onEmbedInput();
+}
+
+function renderEmbedLivePreview() {
+  const el = document.getElementById('embedLivePreview');
+  if (!el) return;
+  el.innerHTML = buildDiscordPreviewHTML(getEmbedDraft(), { mod: 'Mod de démonstration', price: 14.99 });
+}
+
+// Insère {mod}, {prix}... à la position du curseur dans le message
+function insertEmbedVar(text) {
+  const ta = document.getElementById('embedDescription');
+  const start = ta.selectionStart ?? ta.value.length, end = ta.selectionEnd ?? ta.value.length;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + text.length;
+  onEmbedInput();
+}
+
+// Entoure la sélection de ** (gras) ou * (italique)
+function wrapEmbedSelection(mark) {
+  const ta = document.getElementById('embedDescription');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const selected = ta.value.slice(start, end) || 'texte';
+  ta.value = ta.value.slice(0, start) + mark + selected + mark + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = start + mark.length;
+  ta.selectionEnd   = start + mark.length + selected.length;
+  onEmbedInput();
+}
+
+function resetEmbedTextsToDefault() {
+  if (!_embedDefaults) return;
+  if (!confirm('Remettre les textes, la couleur et le rôle d\'origine dans le formulaire ?\n\n(Rien n\'est enregistré tant que tu ne cliques pas sur « Enregistrer l\'embed ».)')) return;
+  fillEmbedForm({ ..._embedDefaults, embed_banner_url: _embedSaved?.embed_banner_url });
+  setEmbedStatus('embedSaveStatus', 'ℹ️ Textes d\'origine remis — pense à enregistrer.', 'info');
+}
+
+async function saveEmbedConfig() {
+  const values = getEmbedFormValues();
+  const err = validateEmbedForm(values);
+  if (err) { setEmbedStatus('embedSaveStatus', '❌ ' + err, 'error'); showToast(err, true); return; }
+
+  const btn = document.getElementById('btnSaveEmbed');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res    = await fetch('/api/admin/embed-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    _embedSaved = result.config;
+    setEmbedStatus('embedSaveStatus', '✅ Embed enregistré ! Les prochaines annonces utiliseront ce modèle.', 'ok');
+    showToast('Embed Discord enregistré !');
+  } catch (e) {
+    setEmbedStatus('embedSaveStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Enregistrer l\'embed';
+  }
+}
+
+async function testEmbed() {
+  const values = getEmbedFormValues();
+  const err = validateEmbedForm(values);
+  if (err) { setEmbedStatus('embedSaveStatus', '❌ ' + err, 'error'); showToast(err, true); return; }
+  if (_embedBannerBase64) showToast('Info : la nouvelle bannière n\'est pas encore envoyée, le test utilise l\'ancienne.');
+
+  const btn = document.getElementById('btnTestEmbed');
+  btn.disabled = true; btn.textContent = '⏳ Envoi...';
+  try {
+    const res    = await fetch('/api/admin/embed-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('embedSaveStatus', '✅ Test envoyé dans tes messages privés Discord.', 'ok');
+    showToast('📨 Regarde tes MP Discord !');
+  } catch (e) {
+    setEmbedStatus('embedSaveStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '📨 Me l\'envoyer en MP';
+  }
+}
+
+function previewEmbedBanner(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  if (!allowed.includes(file.type)) { showToast('Format non supporté (PNG, JPG, GIF ou WEBP)', true); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024)  { showToast('Image trop lourde (8 Mo max)', true); input.value = ''; return; }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _embedBannerBase64 = e.target.result; // data:image/png;base64,...
+    const img = new Image();
+    img.onload = () => {
+      document.getElementById('embedBannerFileName').textContent = `${file.name} · ${img.naturalWidth} × ${img.naturalHeight} px`;
+    };
+    img.src = _embedBannerBase64;
+    document.getElementById('embedBannerFileName').textContent = file.name;
+    document.getElementById('btnUploadEmbedBanner').disabled = false;
+    setEmbedStatus('embedBannerStatus', 'ℹ️ Aperçu à droite — clique sur « Mettre à jour la bannière » pour l\'enregistrer.', 'info');
+    renderEmbedLivePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function uploadEmbedBanner() {
+  if (!_embedBannerBase64) return;
+  const btn = document.getElementById('btnUploadEmbedBanner');
+  btn.disabled = true; btn.textContent = '⏳ Envoi en cours...';
+  try {
+    const res    = await fetch('/api/admin/upload-embed-banner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imageBase64: _embedBannerBase64 }) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    if (_embedSaved) _embedSaved.embed_banner_url = result.url;
+    _embedBannerBase64 = null;
+    document.getElementById('embedBannerInput').value = '';
+    document.getElementById('embedBannerFileName').textContent = 'Aucun fichier';
+    setEmbedStatus('embedBannerStatus', '✅ Bannière mise à jour !', 'ok');
+    showToast('Bannière de l\'embed mise à jour !');
+    renderEmbedLivePreview();
+  } catch (e) {
+    btn.disabled = false; // on laisse réessayer
+    setEmbedStatus('embedBannerStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.textContent = '🚀 Mettre à jour la bannière';
+  }
+}
+
+async function resetEmbedBanner() {
+  if (!confirm('Remettre la bannière d\'origine ?')) return;
+  const btn = document.getElementById('btnResetEmbedBanner');
+  btn.disabled = true;
+  try {
+    const res    = await fetch('/api/admin/embed-banner/reset', { method: 'POST' });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    if (_embedSaved) _embedSaved.embed_banner_url = result.url;
+    _embedBannerBase64 = null;
+    document.getElementById('embedBannerInput').value = '';
+    document.getElementById('embedBannerFileName').textContent = 'Aucun fichier';
+    document.getElementById('btnUploadEmbedBanner').disabled = true;
+    setEmbedStatus('embedBannerStatus', '✅ Bannière d\'origine remise.', 'ok');
+    renderEmbedLivePreview();
+  } catch (e) {
+    setEmbedStatus('embedBannerStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setEmbedStatus(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = type === 'ok' ? 'var(--green)' : type === 'error' ? 'var(--red)' : 'var(--grey-l)';
+}
+
+// Nom lisible du rôle pingé (pour l'aperçu)
+function getRoleLabel(roleId) {
+  const known = (data?.discordRoles || []).find(r => r.roleId === roleId);
+  if (known) return '@' + known.roleName;
+  if (roleId === EMBED_DEFAULT_ROLE_ID) return '@Membres';
+  return '@rôle ' + roleId;
+}
+
+// Mini-rendu Markdown façon Discord (texte déjà échappé → aucun HTML injecté)
+function discordMarkdownToHTML(text) {
+  let html = esc(text);
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_\n]+)__/g, '<u>$1</u>');
+  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  html = html.replace(/(^|[^\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+  return html.replace(/\n/g, '<br>');
+}
+
+function fillEmbedVars(text, vars) {
+  const price = parseFloat(vars.price) > 0 ? formatEUR(vars.price) : 'Gratuit';
+  return String(text || '').replace(/\{(mod|prix|boutique)\}/gi, (_, k) => {
+    k = k.toLowerCase();
+    return k === 'mod' ? (vars.mod || '') : k === 'prix' ? price : _embedShopUrl;
+  });
+}
+
+// Construit le faux message Discord (utilisé par l'onglet Config ET la modale d'annonce)
+function buildDiscordPreviewHTML(cfg, vars) {
+  const color  = /^#[0-9a-fA-F]{6}$/.test(cfg.embed_color) ? cfg.embed_color : '#1abc9c';
+  const title  = fillEmbedVars(cfg.embed_title, vars);
+  const desc   = fillEmbedVars(cfg.embed_description, vars);
+  const footer = fillEmbedVars(cfg.embed_footer, vars);
+  const logo   = data?.site?.logo_url;
+  const avatar = logo ? `<img src="${esc(logo)}" alt="" onerror="this.remove()">` : 'C';
+  const banner = cfg.embed_banner_url
+    ? `<img class="dc-embed-img" src="${esc(cfg.embed_banner_url)}" alt="Bannière" onerror="this.style.display='none'">`
+    : '';
+  const mention = cfg.embed_role_id ? `<div class="dc-text"><span class="dc-mention">${esc(getRoleLabel(cfg.embed_role_id))}</span></div>` : '';
+  return `
+    <div class="dc-msg">
+      <div class="dc-avatar">${avatar}</div>
+      <div class="dc-content">
+        <div class="dc-head"><span class="dc-name">Cac's GTAV Mods</span><span class="dc-app">APP</span><span class="dc-time">Aujourd'hui</span></div>
+        ${mention}
+        <div class="dc-embed" style="border-left-color:${color}">
+          ${title ? `<div class="dc-embed-title">${esc(title)}</div>` : ''}
+          ${desc ? `<div class="dc-embed-desc">${discordMarkdownToHTML(desc)}</div>` : ''}
+          ${banner}
+          ${footer ? `<div class="dc-embed-footer">${esc(footer)}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
 }
 
 let _imageList = [];
