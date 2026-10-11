@@ -1032,7 +1032,7 @@ async function archiveTicket(channel, closedByUser) {
 // elles ont droit à une limite plus haute, toutes les autres restent à 2 Mo.
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonLarge = express.json({ limit: '12mb' });
-const LARGE_BODY_ROUTES = new Set(['/api/admin/upload-logo', '/api/admin/upload-embed-banner']);
+const LARGE_BODY_ROUTES = new Set(['/api/admin/upload-logo', '/api/admin/upload-embed-banner', '/api/admin/bot-avatar']);
 app.use((req, res, next) => (LARGE_BODY_ROUTES.has(req.path) ? jsonLarge : jsonSmall)(req, res, next));
 app.set('trust proxy', 1);
 
@@ -1553,6 +1553,134 @@ app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── 🤖 Logo (avatar) du bot Discord ──────────────────────────
+const BOT_AVATAR_MAX = 8 * 1024 * 1024; // 8 Mo
+
+function botProfile() {
+  if (!discordBot.isReady()) return { ready: false };
+  return { ready: true, username: discordBot.user.username, avatarUrl: discordBot.user.displayAvatarURL({ extension: 'png', size: 256 }) };
+}
+
+// Message clair pour les erreurs Discord les plus courantes
+function botAvatarError(err) {
+  const msg = String(err?.message || err);
+  if (/too fast|rate limit/i.test(msg) || err?.status === 429)
+    return "Discord limite les changements d'avatar (environ 2 par heure). Réessaie un peu plus tard.";
+  if (/AVATAR|image|Invalid Form Body/i.test(msg)) return "Discord a refusé l'image (format ou taille invalide). Essaie un PNG carré de moins de 8 Mo.";
+  return msg;
+}
+
+app.get('/api/admin/bot-profile', requireAdmin, (req, res) => res.json(botProfile()));
+
+// Change l'avatar du bot : { imageBase64 } (fichier choisi) ou { useSiteLogo: true } (reprend le logo du site)
+app.post('/api/admin/bot-avatar', requireAdmin, async (req, res) => {
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté, réessaie dans quelques secondes." });
+  try {
+    let buffer;
+    if (req.body?.useSiteLogo === true) {
+      const { data, error } = await supabase.from('site_config').select('value').eq('key', 'logo_url').maybeSingle();
+      if (error) throw error;
+      if (!data?.value) return res.status(400).json({ error: "Aucun logo de site n'est enregistré (onglet Configuration → Logo du site)." });
+      const imgRes = await fetch(data.value);
+      if (!imgRes.ok) return res.status(400).json({ error: `Impossible de télécharger le logo du site (HTTP ${imgRes.status}).` });
+      buffer = await imgRes.buffer();
+    } else {
+      const matches = String(req.body?.imageBase64 || '').match(/^data:image\/(?:png|jpeg|gif|webp);base64,(.+)$/);
+      if (!matches) return res.status(400).json({ error: 'Format invalide (PNG, JPG, GIF ou WEBP uniquement).' });
+      buffer = Buffer.from(matches[1], 'base64');
+    }
+    if (!buffer?.length) return res.status(400).json({ error: 'Image vide.' });
+    if (buffer.length > BOT_AVATAR_MAX) return res.status(400).json({ error: 'Image trop lourde (8 Mo max).' });
+
+    await discordBot.user.setAvatar(buffer);
+    console.log(`🤖 Avatar du bot mis à jour par ${req.session.user?.username}`);
+    res.json({ success: true, ...botProfile() });
+  } catch (err) {
+    console.warn('⚠️  Changement avatar bot :', err.message);
+    res.status(400).json({ error: botAvatarError(err) });
+  }
+});
+
+// ── 👋 Embed d'accueil des tickets (rappel partenariat / règlement / CGV) ──
+const WELCOME_DEFAULTS = {
+  welcome_enabled:     'true',
+  welcome_title:       '📜 À lire avant de continuer',
+  welcome_description: "Bienvenue {client} ! Merci pour ta commande 🙏\n\n**🤝 Partenariat obligatoire**\nL'utilisation de nos assets sur un **serveur FiveM** nécessite un **partenariat validé** sur notre Discord. Sans partenariat validé, toute utilisation ou diffusion est **interdite**.\n\n**📜 Règlement & CGVU**\nEn validant ta commande, tu as accepté le règlement du serveur et nos [CGVU]({cgv}).\n\n**🚫 Strictement interdit**\n• Revendre, redistribuer ou partager les fichiers\n• Modifier les produits dans le but de les revendre\n• Utiliser les assets sur un serveur FiveM sans partenariat validé\n\n**⏳ Et maintenant ?**\nUn membre du staff va te répondre ici très rapidement. Merci de rester disponible dans ce ticket.",
+  welcome_color:       '#f59e0b',
+};
+const WELCOME_KEYS = Object.keys(WELCOME_DEFAULTS);
+
+async function getWelcomeConfig() {
+  const cfg = { ...WELCOME_DEFAULTS };
+  const { data, error } = await supabase.from('site_config').select('key, value').in('key', WELCOME_KEYS);
+  if (error) throw error;
+  for (const row of data || []) {
+    const value = row.value == null ? '' : String(row.value);
+    if (value !== '') cfg[row.key] = value;
+  }
+  return cfg;
+}
+
+// Remplace {client}, {cgv} et {boutique}
+function fillWelcomePlaceholders(text, vars) {
+  return String(text || '').replace(/\{(client|cgv|boutique)\}/gi, (_, k) => vars[k.toLowerCase()] ?? '');
+}
+
+function buildWelcomeEmbed(cfg, { clientMention = 'toi' } = {}) {
+  const vars  = { client: clientMention, cgv: `${SITE_BASE_URL}/cgvu`, boutique: `${SITE_BASE_URL}/` };
+  const color = /^#[0-9a-fA-F]{6}$/.test(cfg.welcome_color) ? cfg.welcome_color : WELCOME_DEFAULTS.welcome_color;
+  const embed = new EmbedBuilder().setColor(parseInt(color.slice(1), 16)).setTimestamp();
+  const title = fillWelcomePlaceholders(cfg.welcome_title, vars).slice(0, 256);
+  if (title) embed.setTitle(title);
+  const desc = fillWelcomePlaceholders(cfg.welcome_description, vars).slice(0, 4096);
+  if (desc) embed.setDescription(desc);
+  if (discordBot.isReady()) embed.setFooter({ text: "Cac's GTAV Mods", iconURL: discordBot.user.displayAvatarURL({ extension: 'png', size: 64 }) });
+  return embed;
+}
+
+function validateWelcomeInput(b) {
+  const title       = String(b.title ?? '').trim();
+  const description = String(b.description ?? '').trim();
+  const color       = String(b.color ?? '').trim();
+  if (!title)                           return { error: 'Le titre est obligatoire.' };
+  if (title.length > 256)               return { error: 'Titre trop long (256 caractères max).' };
+  if (!description)                     return { error: 'Le message est obligatoire.' };
+  if (description.length > 4000)        return { error: 'Message trop long (4000 caractères max).' };
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return { error: 'Couleur invalide (format attendu : #f59e0b).' };
+  return { values: { welcome_enabled: b.enabled === false ? 'false' : 'true', welcome_title: title, welcome_description: description, welcome_color: color.toLowerCase() } };
+}
+
+app.get('/api/admin/welcome-config', requireAdmin, async (req, res) => {
+  try { res.json({ config: await getWelcomeConfig(), defaults: WELCOME_DEFAULTS, siteUrl: SITE_BASE_URL }); }
+  catch (err) { res.status(500).json({ error: 'Erreur lecture : ' + err.message }); }
+});
+
+app.post('/api/admin/welcome-config', requireAdmin, async (req, res) => {
+  const check = validateWelcomeInput(req.body || {});
+  if (check.error) return res.status(400).json({ error: check.error });
+  try {
+    const rows = Object.entries(check.values).map(([key, value]) => ({ key, value }));
+    const { error } = await supabase.from('site_config').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
+    res.json({ success: true, config: await getWelcomeConfig() });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
+});
+
+// Envoie l'embed d'accueil en MP à l'admin (pour voir le vrai rendu)
+app.post('/api/admin/welcome-test', requireAdmin, async (req, res) => {
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté." });
+  const check = validateWelcomeInput(req.body || {});
+  if (check.error) return res.status(400).json({ error: check.error });
+  try {
+    const user = await discordBot.users.fetch(req.session.user.id);
+    await user.send({ content: "🧪 **Test** — voici l'embed qui sera posté à l'ouverture de chaque ticket :", embeds: [buildWelcomeEmbed(check.values, { clientMention: `<@${user.id}>` })], allowedMentions: { parse: [] } });
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 50007) return res.status(400).json({ error: "Impossible de t'envoyer un MP : autorise les messages privés des membres du serveur dans tes paramètres Discord." });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── 📜 Transcripts (panel admin) ─────────────────────────────
 async function isTranscriptTableReady() {
   const { error } = await supabase.from('transcripts').select('id').limit(1);
@@ -1913,6 +2041,14 @@ app.post('/api/order', async (req, res) => {
         for (const roleId of STAFF_ROLE_IDS) permissionOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages] });
         channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${today}` });
         await channel.send([`# 🛒 Nouvelle commande — ${today}`, ``, `**Client :** ${clientMention}`, ...totalLines, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
+
+        // Embed d'accueil : rappel partenariat / règlement / CGV (désactivable dans le panel)
+        try {
+          const welcome = await getWelcomeConfig();
+          if (welcome.welcome_enabled !== 'false') {
+            await channel.send({ embeds: [buildWelcomeEmbed(welcome, { clientMention: member ? `<@${member.id}>` : `**${username}**` })], allowedMentions: { parse: [] } });
+          }
+        } catch (e) { console.warn('⚠️  Embed d\'accueil non envoyé :', e.message); } // ne bloque jamais la commande
       }
 
       // 4. Embed de statut + enregistrement (une ligne par commande, même si le ticket est partagé)

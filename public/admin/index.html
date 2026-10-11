@@ -546,6 +546,111 @@ alter table public.transcripts enable row level security;</div>
             </div>
           </div>
 
+          <!-- LOGO DU BOT DISCORD -->
+          <div class="card" style="border-color:rgba(88,101,242,0.3)">
+            <div class="card-header" style="background:rgba(88,101,242,0.05)">
+              <span class="card-title" style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:1.1rem">🤖</span> Logo du bot Discord
+              </span>
+              <span id="botProfileName" style="font-family:var(--mono);font-size:0.75rem;color:var(--grey-m)">—</span>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:20px;line-height:1.6">
+                Change la photo de profil du bot sur Discord (tickets, annonces, transcripts…).<br>
+                <span style="font-family:var(--mono);font-size:0.75rem">PNG/JPG carré conseillé (512 × 512 px) · 8 Mo max · Discord limite à environ 2 changements par heure.</span>
+              </p>
+              <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex-shrink:0">
+                  <div id="botAvatarWrap" style="width:88px;height:88px;border-radius:50%;background:var(--bg-2);border:2px dashed var(--border-b);display:flex;align-items:center;justify-content:center;overflow:hidden">
+                    <span id="botAvatarPlaceholder" style="font-size:2rem">🤖</span>
+                    <img id="botAvatarImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover">
+                  </div>
+                  <span id="botAvatarLabel" style="font-size:0.7rem;color:var(--grey-m);font-family:var(--mono)">Actuel</span>
+                </div>
+                <div style="flex:1;min-width:220px;display:flex;flex-direction:column;gap:12px">
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <label for="botAvatarInput" class="embed-file-btn">📂 Choisir une image</label>
+                    <input type="file" id="botAvatarInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none" onchange="previewBotAvatar(this)">
+                    <span id="botAvatarFileName" style="font-size:0.78rem;color:var(--grey-m);font-family:var(--mono)">Aucun fichier</span>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button class="btn btn-discord" id="btnUploadBotAvatar" onclick="uploadBotAvatar()" disabled>🚀 Mettre à jour le logo du bot</button>
+                    <button class="btn btn-ghost" id="btnBotUseSiteLogo" onclick="useSiteLogoForBot()">🖼️ Utiliser le logo du site</button>
+                  </div>
+                  <div id="botAvatarStatus" class="embed-status"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- EMBED D'ACCUEIL DES TICKETS -->
+          <div class="card" style="border-color:rgba(245,158,11,0.3)">
+            <div class="card-header" style="background:rgba(245,158,11,0.05)">
+              <span class="card-title" style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:1.1rem">👋</span> Embed d'accueil des tickets (règles &amp; partenariat)
+              </span>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:16px;line-height:1.6">
+                Posté automatiquement par le bot à l'ouverture de chaque <strong>nouveau</strong> ticket, juste après le récapitulatif de commande.<br>
+                <span style="font-family:var(--mono);font-size:0.75rem">Pas renvoyé quand une commande est ajoutée à un ticket déjà ouvert.</span>
+              </p>
+
+              <div class="maintenance-box" style="background:rgba(245,158,11,0.06);border-color:rgba(245,158,11,0.25);margin-bottom:18px">
+                <div class="maintenance-box-left">
+                  <div class="maintenance-box-title">Envoyer l'embed d'accueil</div>
+                  <div class="maintenance-box-desc">Désactive-le si tu ne veux plus de rappel automatique dans les tickets.</div>
+                </div>
+                <div class="maintenance-box-right">
+                  <div class="toggle-wrap" onclick="toggleWelcome()"><button type="button" class="toggle on" id="toggleWelcomeEnabled"></button></div>
+                </div>
+              </div>
+
+              <div class="embed-editor">
+                <div class="embed-form">
+                  <div class="form-group">
+                    <label for="welcomeTitle">Titre <span class="embed-counter" id="welcomeTitleCount">0/256</span></label>
+                    <input type="text" id="welcomeTitle" maxlength="256" oninput="onWelcomeInput()">
+                  </div>
+                  <div class="form-group">
+                    <label for="welcomeDescription">Message <span class="embed-counter" id="welcomeDescriptionCount">0/4000</span></label>
+                    <textarea id="welcomeDescription" rows="12" maxlength="4000" oninput="onWelcomeInput()" style="font-family:var(--mono);font-size:0.8rem;line-height:1.5"></textarea>
+                    <div class="embed-chips">
+                      <span class="embed-help" style="margin:0;align-self:center">Insérer :</span>
+                      <button type="button" class="embed-chip" onclick="insertWelcomeVar('{client}')" title="Mention du client">{client}</button>
+                      <button type="button" class="embed-chip" onclick="insertWelcomeVar('{cgv}')" title="Lien vers les CGVU">{cgv}</button>
+                      <button type="button" class="embed-chip" onclick="insertWelcomeVar('{boutique}')" title="Lien de la boutique">{boutique}</button>
+                      <button type="button" class="embed-chip" onclick="wrapWelcomeSelection('**')"><b>Gras</b></button>
+                      <button type="button" class="embed-chip" onclick="wrapWelcomeSelection('*')"><i>Italique</i></button>
+                    </div>
+                    <div class="embed-help">Lien cliquable : [texte]({cgv}) · Liste : « • élément » en début de ligne</div>
+                  </div>
+                  <div class="form-group">
+                    <label for="welcomeColor">Couleur de la barre</label>
+                    <div class="color-preview-wrap">
+                      <input type="color" id="welcomeColorPicker" value="#f59e0b" oninput="syncWelcomeColor('picker')">
+                      <input type="text" id="welcomeColor" maxlength="7" placeholder="#f59e0b" oninput="syncWelcomeColor('text')">
+                    </div>
+                  </div>
+
+                  <div id="welcomeStatus" class="embed-status"></div>
+                  <div class="embed-actions">
+                    <button class="btn btn-ghost" onclick="resetWelcomeToDefault()">↺ Texte d'origine</button>
+                    <button class="btn btn-ghost" id="btnTestWelcome" onclick="testWelcome()">📨 Me l'envoyer en MP</button>
+                    <button class="btn btn-red" id="btnSaveWelcome" onclick="saveWelcomeConfig()">💾 Enregistrer</button>
+                  </div>
+                </div>
+
+                <div style="position:sticky;top:20px">
+                  <div class="dc-wrap">
+                    <div class="dc-label">Aperçu dans un ticket</div>
+                    <div id="welcomeLivePreview"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- EMBED DISCORD (ANNONCES) -->
           <div class="card" style="border-color:rgba(88,101,242,0.3)">
             <div class="card-header" style="background:rgba(88,101,242,0.05)">

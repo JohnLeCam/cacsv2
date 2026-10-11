@@ -23,6 +23,8 @@ async function loadAdminData() {
     renderDashboard(); renderModsList(); renderCategoriesList(); renderPromosList(); renderRolesList(); loadConfigForm();
     loadEmbedConfig(); // config de l'embed Discord (onglet Configuration + modale d'annonce)
     loadTranscriptConfig(); // options des transcripts de tickets
+    loadBotProfile();       // logo actuel du bot Discord
+    loadWelcomeConfig();    // embed d'accueil des tickets
   } catch (e) { console.error('Erreur chargement admin:', e); showToast('Erreur lors du chargement des données', true); }
 }
 
@@ -1236,7 +1238,7 @@ function buildDiscordPreviewHTML(cfg, vars) {
   const title  = fillEmbedVars(cfg.embed_title, vars);
   const desc   = fillEmbedVars(cfg.embed_description, vars);
   const footer = fillEmbedVars(cfg.embed_footer, vars);
-  const logo   = data?.site?.logo_url;
+  const logo   = _botAvatarUrl || data?.site?.logo_url;
   const avatar = logo ? `<img src="${esc(logo)}" alt="" onerror="this.remove()">` : 'C';
   const banner = cfg.embed_banner_url
     ? `<img class="dc-embed-img" src="${esc(cfg.embed_banner_url)}" alt="Bannière" onerror="this.style.display='none'">`
@@ -1256,6 +1258,247 @@ function buildDiscordPreviewHTML(cfg, vars) {
         </div>
       </div>
     </div>`;
+}
+
+// ─── 🤖 LOGO DU BOT DISCORD ──────────────────────────────────
+let _botAvatarUrl    = '';
+let _botAvatarBase64 = null;
+
+function showBotAvatar(url, label) {
+  const img = document.getElementById('botAvatarImg');
+  const ph  = document.getElementById('botAvatarPlaceholder');
+  if (!img) return;
+  if (url) { img.src = url; img.style.display = 'block'; ph.style.display = 'none'; }
+  else     { img.style.display = 'none'; ph.style.display = 'inline'; }
+  document.getElementById('botAvatarLabel').textContent = label;
+}
+
+async function loadBotProfile() {
+  try {
+    const res = await fetch('/api/admin/bot-profile');
+    const p   = await readJsonSafe(res);
+    if (!res.ok) throw new Error(p.error || 'Erreur inconnue');
+    if (!p.ready) {
+      document.getElementById('botProfileName').textContent = '⏳ bot pas encore connecté';
+      return;
+    }
+    _botAvatarUrl = p.avatarUrl;
+    document.getElementById('botProfileName').textContent = '@' + p.username;
+    showBotAvatar(p.avatarUrl, 'Actuel');
+    renderEmbedLivePreview();
+    renderWelcomeLivePreview();
+  } catch (e) {
+    console.error('Erreur profil bot :', e);
+  }
+}
+
+function previewBotAvatar(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  if (!allowed.includes(file.type)) { showToast('Format non supporté (PNG, JPG, GIF ou WEBP)', true); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024)  { showToast('Image trop lourde (8 Mo max)', true); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _botAvatarBase64 = e.target.result;
+    showBotAvatar(_botAvatarBase64, 'Nouveau (non envoyé)');
+    document.getElementById('botAvatarFileName').textContent = file.name;
+    document.getElementById('btnUploadBotAvatar').disabled = false;
+    setEmbedStatus('botAvatarStatus', 'ℹ️ Clique sur « Mettre à jour le logo du bot » pour l\'appliquer sur Discord.', 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendBotAvatar(payload, btn, busyText, idleText) {
+  btn.disabled = true; btn.textContent = busyText;
+  try {
+    const res    = await fetch('/api/admin/bot-avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    _botAvatarUrl = result.avatarUrl;
+    _botAvatarBase64 = null;
+    document.getElementById('botAvatarInput').value = '';
+    document.getElementById('botAvatarFileName').textContent = 'Aucun fichier';
+    document.getElementById('btnUploadBotAvatar').disabled = true;
+    showBotAvatar(result.avatarUrl, 'Actuel');
+    setEmbedStatus('botAvatarStatus', '✅ Logo du bot mis à jour sur Discord ! (peut prendre quelques minutes à s\'afficher partout)', 'ok');
+    showToast('Logo du bot mis à jour !');
+    renderEmbedLivePreview();
+    renderWelcomeLivePreview();
+    return true;
+  } catch (e) {
+    setEmbedStatus('botAvatarStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+    return false;
+  } finally {
+    btn.textContent = idleText;
+    if (btn.id !== 'btnUploadBotAvatar') btn.disabled = false;
+    else btn.disabled = !_botAvatarBase64;
+  }
+}
+
+function uploadBotAvatar() {
+  if (!_botAvatarBase64) return;
+  return sendBotAvatar({ imageBase64: _botAvatarBase64 }, document.getElementById('btnUploadBotAvatar'), '⏳ Envoi à Discord...', '🚀 Mettre à jour le logo du bot');
+}
+
+function useSiteLogoForBot() {
+  if (!confirm('Mettre le logo du site comme photo de profil du bot ?')) return;
+  return sendBotAvatar({ useSiteLogo: true }, document.getElementById('btnBotUseSiteLogo'), '⏳ Envoi à Discord...', '🖼️ Utiliser le logo du site');
+}
+
+// ─── 👋 EMBED D'ACCUEIL DES TICKETS ──────────────────────────
+let _welcomeDefaults = null;
+let _welcomeSiteUrl  = 'https://www.cacsgtavmods.fr';
+
+async function loadWelcomeConfig() {
+  try {
+    const res    = await fetch('/api/admin/welcome-config');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    _welcomeDefaults = result.defaults;
+    _welcomeSiteUrl  = result.siteUrl || _welcomeSiteUrl;
+    fillWelcomeForm(result.config);
+  } catch (e) {
+    console.error('Erreur config accueil :', e);
+    setEmbedStatus('welcomeStatus', '❌ Impossible de charger l\'embed d\'accueil : ' + e.message, 'error');
+  }
+}
+
+function fillWelcomeForm(cfg) {
+  if (!document.getElementById('welcomeTitle')) return;
+  setToggle('toggleWelcomeEnabled', cfg.welcome_enabled !== 'false');
+  document.getElementById('welcomeTitle').value       = cfg.welcome_title || '';
+  document.getElementById('welcomeDescription').value = cfg.welcome_description || '';
+  const color = /^#[0-9a-fA-F]{6}$/.test(cfg.welcome_color) ? cfg.welcome_color : '#f59e0b';
+  document.getElementById('welcomeColor').value       = color;
+  document.getElementById('welcomeColorPicker').value = color;
+  onWelcomeInput();
+}
+
+function getWelcomeFormValues() {
+  return {
+    enabled:     isToggleOn('toggleWelcomeEnabled'),
+    title:       document.getElementById('welcomeTitle').value.trim(),
+    description: document.getElementById('welcomeDescription').value.trim(),
+    color:       document.getElementById('welcomeColor').value.trim(),
+  };
+}
+
+function validateWelcomeForm(v) {
+  if (!v.title)                           return 'Le titre est obligatoire.';
+  if (!v.description)                     return 'Le message est obligatoire.';
+  if (!/^#[0-9a-fA-F]{6}$/.test(v.color)) return 'Couleur invalide (format attendu : #f59e0b).';
+  return null;
+}
+
+function onWelcomeInput() {
+  updateEmbedCounter('welcomeTitle', 'welcomeTitleCount', 256);
+  updateEmbedCounter('welcomeDescription', 'welcomeDescriptionCount', 4000);
+  renderWelcomeLivePreview();
+}
+
+function toggleWelcome() {
+  setToggle('toggleWelcomeEnabled', !isToggleOn('toggleWelcomeEnabled'));
+  setEmbedStatus('welcomeStatus', 'ℹ️ Modifié — pense à enregistrer.', 'info');
+  renderWelcomeLivePreview();
+}
+
+function syncWelcomeColor(source) {
+  const text = document.getElementById('welcomeColor'), picker = document.getElementById('welcomeColorPicker');
+  if (source === 'picker') text.value = picker.value;
+  else if (/^#[0-9a-fA-F]{6}$/.test(text.value.trim())) picker.value = text.value.trim();
+  renderWelcomeLivePreview();
+}
+
+function insertWelcomeVar(text) {
+  const ta = document.getElementById('welcomeDescription');
+  const start = ta.selectionStart ?? ta.value.length, end = ta.selectionEnd ?? ta.value.length;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  ta.focus(); ta.selectionStart = ta.selectionEnd = start + text.length;
+  onWelcomeInput();
+}
+
+function wrapWelcomeSelection(mark) {
+  const ta = document.getElementById('welcomeDescription');
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  const selected = ta.value.slice(start, end) || 'texte';
+  ta.value = ta.value.slice(0, start) + mark + selected + mark + ta.value.slice(end);
+  ta.focus(); ta.selectionStart = start + mark.length; ta.selectionEnd = start + mark.length + selected.length;
+  onWelcomeInput();
+}
+
+function renderWelcomeLivePreview() {
+  const el = document.getElementById('welcomeLivePreview');
+  if (!el || !document.getElementById('welcomeTitle')) return;
+  const v = getWelcomeFormValues();
+  if (!v.enabled) { el.innerHTML = '<div style="color:#80848e;font-size:0.82rem">🔕 Embed d\'accueil désactivé : rien ne sera posté à l\'ouverture des tickets.</div>'; return; }
+  const color = /^#[0-9a-fA-F]{6}$/.test(v.color) ? v.color : '#f59e0b';
+  const fill  = t => String(t || '').replace(/\{(client|cgv|boutique)\}/gi, (_, k) => {
+    k = k.toLowerCase();
+    return k === 'client' ? '@Client' : k === 'cgv' ? `${_welcomeSiteUrl}/cgvu` : `${_welcomeSiteUrl}/`;
+  });
+  const descHTML = discordMarkdownToHTML(fill(v.description)).replace(/@Client/g, '<span class="dc-mention">@Client</span>');
+  const avatar = _botAvatarUrl ? `<img src="${esc(_botAvatarUrl)}" alt="" onerror="this.remove()">` : 'C';
+  el.innerHTML = `
+    <div class="dc-msg">
+      <div class="dc-avatar">${avatar}</div>
+      <div class="dc-content">
+        <div class="dc-head"><span class="dc-name">Cac's GTAV Mods</span><span class="dc-app">APP</span><span class="dc-time">Aujourd'hui</span></div>
+        <div class="dc-embed" style="border-left-color:${color}">
+          ${v.title ? `<div class="dc-embed-title" style="color:#fff">${esc(fill(v.title))}</div>` : ''}
+          <div class="dc-embed-desc">${descHTML}</div>
+          <div class="dc-embed-footer">Cac's GTAV Mods • Aujourd'hui</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function resetWelcomeToDefault() {
+  if (!_welcomeDefaults) return;
+  if (!confirm('Remettre le texte d\'origine dans le formulaire ?\n\n(Rien n\'est enregistré tant que tu ne cliques pas sur « Enregistrer ».)')) return;
+  fillWelcomeForm({ ..._welcomeDefaults, welcome_enabled: isToggleOn('toggleWelcomeEnabled') ? 'true' : 'false' });
+  setEmbedStatus('welcomeStatus', 'ℹ️ Texte d\'origine remis — pense à enregistrer.', 'info');
+}
+
+async function saveWelcomeConfig() {
+  const v = getWelcomeFormValues();
+  const err = validateWelcomeForm(v);
+  if (err) { setEmbedStatus('welcomeStatus', '❌ ' + err, 'error'); showToast(err, true); return; }
+  const btn = document.getElementById('btnSaveWelcome');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res    = await fetch('/api/admin/welcome-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('welcomeStatus', '✅ Embed d\'accueil enregistré ! Il sera utilisé pour les prochains tickets.', 'ok');
+    showToast('Embed d\'accueil enregistré !');
+  } catch (e) {
+    setEmbedStatus('welcomeStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Enregistrer';
+  }
+}
+
+async function testWelcome() {
+  const v = getWelcomeFormValues();
+  const err = validateWelcomeForm(v);
+  if (err) { setEmbedStatus('welcomeStatus', '❌ ' + err, 'error'); showToast(err, true); return; }
+  const btn = document.getElementById('btnTestWelcome');
+  btn.disabled = true; btn.textContent = '⏳ Envoi...';
+  try {
+    const res    = await fetch('/api/admin/welcome-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(v) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('welcomeStatus', '✅ Test envoyé dans tes messages privés Discord.', 'ok');
+    showToast('📨 Regarde tes MP Discord !');
+  } catch (e) {
+    setEmbedStatus('welcomeStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '📨 Me l\'envoyer en MP';
+  }
 }
 
 // ─── 📜 TRANSCRIPTS DES TICKETS ──────────────────────────────
