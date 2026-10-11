@@ -24,6 +24,7 @@ async function loadAdminData() {
     loadEmbedConfig(); // config de l'embed Discord (onglet Configuration + modale d'annonce)
     loadTranscriptConfig(); // options des transcripts de tickets
     loadBotProfile();       // logo actuel du bot Discord
+    loadBotStatus();        // statut « Joue à… / Regarde… »
     loadWelcomeConfig();    // embed d'accueil des tickets
     loadOptionPrices();     // prix des options (debadgage, retexture, core)
     loadTicketConfig();     // nom des salons, message d'ouverture, fermeture auto
@@ -1357,6 +1358,7 @@ function applyBotProfile(p) {
   const input = document.getElementById('botUsernameInput');
   if (input && document.activeElement !== input) input.value = p.username;
   if (!_botBannerBase64) showBotBanner(p.bannerUrl || '');
+  renderBotStatusPreview();
 }
 
 function showBotBanner(url) {
@@ -1435,6 +1437,67 @@ function uploadBotBanner() {
 function removeBotBanner() {
   if (!confirm('Retirer la bannière du bot ?')) return;
   return sendBotBanner({ remove: true }, document.getElementById('btnRemoveBotBanner'), '🗑️ Retirer la bannière');
+}
+
+// ─── 🟢 STATUT DU BOT ────────────────────────────────────────
+const BOT_STATUS_PREFIX = { playing: 'Joue à ', watching: 'Regarde ', listening: 'Écoute ', competing: 'Participe à ', custom: '' };
+const BOT_STATUS_DOT    = { online: '#23a55a', idle: '#f0b232', dnd: '#f23f43', invisible: '#80848e' };
+
+async function loadBotStatus() {
+  try {
+    const res    = await fetch('/api/admin/bot-status');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    const c = result.config;
+    document.getElementById('botStatusType').value   = c.bot_status_type in BOT_STATUS_PREFIX || c.bot_status_type === 'none' ? c.bot_status_type : 'watching';
+    document.getElementById('botStatusOnline').value = BOT_STATUS_DOT[c.bot_status_online] ? c.bot_status_online : 'online';
+    document.getElementById('botStatusText').value   = c.bot_status_text || '';
+    renderBotStatusPreview();
+  } catch (e) {
+    setEmbedStatus('botStatusStatus', '❌ Impossible de charger le statut : ' + e.message, 'error');
+  }
+}
+
+function renderBotStatusPreview() {
+  const typeEl = document.getElementById('botStatusType');
+  if (!typeEl) return;
+  const type   = typeEl.value;
+  const online = document.getElementById('botStatusOnline').value;
+  const textEl = document.getElementById('botStatusText');
+  textEl.disabled = type === 'none';
+  updateEmbedCounter('botStatusText', 'botStatusTextCount', 128);
+  const text = textEl.value.trim();
+  document.getElementById('botStatusDot').style.background = BOT_STATUS_DOT[online] || BOT_STATUS_DOT.online;
+  const line = document.getElementById('botStatusLine');
+  if (type === 'none' || !text) line.textContent = online === 'invisible' ? 'Hors ligne' : '';
+  else line.innerHTML = type === 'custom' ? esc(text) : `${BOT_STATUS_PREFIX[type]}<strong style="color:#dbdee1">${esc(text)}</strong>`;
+  const name = document.getElementById('botProfileName').textContent;
+  if (name && name.startsWith('@')) document.getElementById('botStatusName').textContent = name.slice(1);
+  const av = document.getElementById('botStatusAvatar');
+  if (_botAvatarUrl) av.innerHTML = `<img src="${esc(_botAvatarUrl)}" alt="" onerror="this.remove()">`;
+}
+
+async function saveBotStatus() {
+  const body = {
+    type:   document.getElementById('botStatusType').value,
+    text:   document.getElementById('botStatusText').value.trim(),
+    online: document.getElementById('botStatusOnline').value,
+  };
+  if (body.type !== 'none' && !body.text) { setEmbedStatus('botStatusStatus', '❌ Écris un texte (ou choisis « Aucune activité »).', 'error'); return; }
+  const btn = document.getElementById('btnSaveBotStatus');
+  btn.disabled = true; btn.textContent = '⏳ Application...';
+  try {
+    const res    = await fetch('/api/admin/bot-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('botStatusStatus', result.applied ? '✅ Statut appliqué sur Discord !' : '✅ Enregistré — il sera appliqué dès que le bot sera connecté.', 'ok');
+    showToast('Statut du bot mis à jour !');
+  } catch (e) {
+    setEmbedStatus('botStatusStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Appliquer le statut';
+  }
 }
 
 // ─── 💶 PRIX DES OPTIONS ─────────────────────────────────────

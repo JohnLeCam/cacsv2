@@ -684,6 +684,52 @@ alter table public.transcripts enable row level security;</div>
               </div>
               <div class="embed-help">Format paysage 600 × 240 px conseillé (ratio 5:2) · 8 Mo max · Environ 2 changements par heure.</div>
               <div id="botBannerStatus" class="embed-status" style="margin-top:6px"></div>
+
+              <hr class="sep">
+
+              <!-- Statut -->
+              <label>Statut du bot (affiché sous son nom)</label>
+              <div class="form-grid" style="margin-top:8px">
+                <div class="form-group">
+                  <label for="botStatusType">Activité</label>
+                  <select id="botStatusType" onchange="renderBotStatusPreview()">
+                    <option value="playing">🎮 Joue à …</option>
+                    <option value="watching">👀 Regarde …</option>
+                    <option value="listening">🎧 Écoute …</option>
+                    <option value="competing">🏆 Participe à …</option>
+                    <option value="custom">💬 Texte personnalisé</option>
+                    <option value="none">— Aucune activité</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="botStatusOnline">Point de couleur</label>
+                  <select id="botStatusOnline" onchange="renderBotStatusPreview()">
+                    <option value="online">🟢 En ligne</option>
+                    <option value="idle">🌙 Absent</option>
+                    <option value="dnd">⛔ Ne pas déranger</option>
+                    <option value="invisible">⚫ Invisible (apparaît hors ligne)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="botStatusText">Texte <span class="embed-counter" id="botStatusTextCount">0/128</span></label>
+                <input type="text" id="botStatusText" maxlength="128" placeholder="cacsgtavmods.fr" oninput="renderBotStatusPreview()">
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;background:#232428;border-radius:8px;padding:12px 14px;max-width:420px;margin:4px 0 12px">
+                <div style="position:relative;flex-shrink:0">
+                  <div class="dc-avatar" id="botStatusAvatar">C</div>
+                  <span id="botStatusDot" style="position:absolute;right:-2px;bottom:-2px;width:14px;height:14px;border-radius:50%;border:3px solid #232428;background:#23a55a"></span>
+                </div>
+                <div style="min-width:0">
+                  <div id="botStatusName" style="color:#fff;font-weight:600;font-size:0.92rem">Cac's GTAV Mods</div>
+                  <div id="botStatusLine" style="color:#b5bac1;font-size:0.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+                </div>
+              </div>
+              <div class="embed-help">Discord n'impose pas de limite ici : le changement est instantané. Il est réappliqué automatiquement à chaque redémarrage du bot.</div>
+              <div id="botStatusStatus" class="embed-status" style="margin-top:6px"></div>
+              <div class="embed-actions" style="margin-top:10px">
+                <button class="btn btn-discord" id="btnSaveBotStatus" onclick="saveBotStatus()">💾 Appliquer le statut</button>
+              </div>
             </div>
           </div>
 
