@@ -6,7 +6,7 @@ const helmet      = require('helmet');
 const rateLimit   = require('express-rate-limit');
 const compression = require('compression');
 const { createClient } = require('@supabase/supabase-js');
-const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -521,13 +521,43 @@ async function handleSiteCheck(message, mode) {
 discordBot.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
-  // !close
-  if (message.content === '!close' && message.channel.name?.startsWith('ticket-')) {
+  // !close  (ou « !close force » pour supprimer même si le transcript échoue)
+  const closeCmd = message.content.trim().toLowerCase();
+  if ((closeCmd === '!close' || closeCmd === '!close force') && message.channel.name?.startsWith('ticket-')) {
     const member  = message.member;
     const isStaff = STAFF_ROLE_IDS.some(roleId => member?.roles.cache.has(roleId));
     if (!isStaff) { await message.reply('❌ Seul un membre du staff peut fermer ce ticket.'); return; }
-    await message.channel.send('🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
-    setTimeout(() => message.channel.delete().catch(() => {}), 5000);
+    const channel = message.channel;
+    if (closingTickets.has(channel.id)) return; // fermeture déjà en cours
+    closingTickets.add(channel.id);
+    const force = closeCmd === '!close force';
+
+    try {
+      const cfg = await getTranscriptConfig();
+      if (cfg.transcript_enabled !== 'false') {
+        await channel.send('🔒 Fermeture du ticket… 📜 Création du transcript en cours, merci de patienter.');
+        try {
+          const r = await archiveTicket(channel, message.author);
+          const done = [r.saved ? 'panel admin' : null, r.sentToLog ? 'salon des transcripts' : null, r.sentToClient ? 'MP du client' : null].filter(Boolean).join(', ');
+          await channel.send(`✅ Transcript enregistré (${r.messageCount} messages → ${done}).${r.warnings.length ? `\n⚠️ ${r.warnings.join(' · ')}` : ''}`);
+          console.log(`📜 Transcript #${channel.name} : ${r.messageCount} messages → ${done}`);
+        } catch (err) {
+          console.error(`❌ Transcript #${channel.name} :`, err.message);
+          if (!force) {
+            await channel.send(`⚠️ **Le transcript n'a pas pu être créé** : ${err.message}\nLe salon n'est **pas** supprimé pour ne rien perdre. Tape \`!close force\` pour le supprimer quand même.`);
+            closingTickets.delete(channel.id);
+            return;
+          }
+          await channel.send('⚠️ Transcript impossible, suppression forcée demandée.');
+        }
+      }
+      await channel.send('🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
+      setTimeout(() => channel.delete().catch(() => {}).finally(() => closingTickets.delete(channel.id)), 5000);
+    } catch (err) {
+      closingTickets.delete(channel.id);
+      console.error('❌ Erreur !close :', err.message);
+      await channel.send('❌ Erreur pendant la fermeture : ' + err.message).catch(() => {});
+    }
     return;
   }
 
@@ -617,6 +647,384 @@ async function updateDiscordEmbed(order, newStatus) {
   } catch (err) {
     console.warn('Impossible de mettre à jour l\'embed Discord:', err.message);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  📜 TRANSCRIPTS DES TICKETS DE COMMANDE
+//  À la fermeture (!close), toute la conversation est sauvegardée
+//  en page HTML : table Supabase "transcripts" + salon Discord de logs
+//  (+ copie en MP au client si l'option est activée dans le panel).
+// ══════════════════════════════════════════════════════════════
+const TRANSCRIPT_TZ            = 'Europe/Paris';        // Railway tourne en UTC → on force l'heure française
+const TRANSCRIPT_MAX_MESSAGES  = 5000;                  // sécurité anti-boucle infinie
+const TRANSCRIPT_IMG_MAX       = 2 * 1024 * 1024;       // image jointe intégrée si ≤ 2 Mo...
+const TRANSCRIPT_IMG_TOTAL     = 5 * 1024 * 1024;       // ...et tant que le total reste ≤ 5 Mo
+const TRANSCRIPT_DISCORD_MAX   = 8 * 1024 * 1024;       // au-delà, le fichier n'est pas joint sur Discord (limite 10 Mo)
+const TRANSCRIPT_DEFAULTS = {
+  transcript_enabled:    'true',
+  transcript_channel_id: process.env.TRANSCRIPT_CHANNEL_ID || '1558878319523532820', // salon #transcripts
+  transcript_dm_client:  'false',
+};
+const closingTickets = new Set(); // évite 2 fermetures en même temps sur le même salon
+
+async function getTranscriptConfig() {
+  const cfg = { ...TRANSCRIPT_DEFAULTS };
+  try {
+    const { data, error } = await supabase.from('site_config').select('key, value').in('key', Object.keys(TRANSCRIPT_DEFAULTS));
+    if (error) throw error;
+    for (const row of data || []) cfg[row.key] = row.value == null ? '' : String(row.value);
+  } catch (e) { console.warn('⚠️  Lecture config transcripts impossible :', e.message); }
+  return cfg;
+}
+
+function tEsc(str) {
+  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function tDate(date, withSeconds = false) {
+  return new Date(date).toLocaleString('fr-FR', {
+    timeZone: TRANSCRIPT_TZ, day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', ...(withSeconds ? { second: '2-digit' } : {})
+  });
+}
+
+// Récupère TOUS les messages du salon (Discord en donne 100 max par appel)
+async function fetchAllTicketMessages(channel) {
+  const all = [];
+  let before;
+  while (all.length < TRANSCRIPT_MAX_MESSAGES) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (!batch.size) break;
+    all.push(...batch.values());
+    before = batch.last().id;
+    if (batch.size < 100) break;
+  }
+  return all.sort((a, b) => a.createdTimestamp - b.createdTimestamp); // du plus ancien au plus récent
+}
+
+// Mini-rendu Markdown Discord → HTML (tout est échappé d'abord : aucun HTML du client ne passe)
+function discordMdToHtml(text, ctx) {
+  if (!text) return '';
+  const blocks = [];
+  // 1. Blocs de code ```...``` mis de côté (pas de mise en forme dedans)
+  let src = String(text).replace(/```(?:[\w-]+\n)?([\s\S]*?)```/g, (_, code) => {
+    blocks.push(`<pre>${tEsc(code.replace(/^\n+|\n+$/g, ''))}</pre>`);
+    return `\u0000${blocks.length - 1}\u0000`;
+  });
+  const inline = [];
+  src = src.replace(/`([^`\n]+)`/g, (_, code) => { inline.push(`<code>${tEsc(code)}</code>`); return `\u0001${inline.length - 1}\u0001`; });
+
+  let html = tEsc(src);
+  // Mentions, salons, rôles, emojis, dates
+  html = html.replace(/&lt;@!?(\d{15,21})&gt;/g, (_, id) => `<span class="mention">@${tEsc(ctx.userName(id))}</span>`);
+  html = html.replace(/&lt;@&amp;(\d{15,21})&gt;/g, (_, id) => `<span class="mention">@${tEsc(ctx.roleName(id))}</span>`);
+  html = html.replace(/&lt;#(\d{15,21})&gt;/g, (_, id) => `<span class="mention">#${tEsc(ctx.channelName(id))}</span>`);
+  html = html.replace(/&lt;(a?):(\w{2,32}):(\d{15,21})&gt;/g, (_, a, name, id) => `<img class="emoji" alt=":${name}:" title=":${name}:" src="https://cdn.discordapp.com/emojis/${id}.${a ? 'gif' : 'png'}?size=48">`);
+  html = html.replace(/&lt;t:(\d{1,13})(?::[tTdDfFR])?&gt;/g, (_, ts) => `<span class="ts">${tEsc(tDate(Number(ts) * 1000))}</span>`);
+  // Liens [texte](url) puis URL brutes
+  html = html.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<]+[^\s<.,;:!?)"'])/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  // Mise en forme
+  html = html.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_\n]+)__/g, '<u>$1</u>');
+  html = html.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
+  html = html.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>');
+  html = html.replace(/\|\|([^|\n]+)\|\|/g, '<span class="spoiler">$1</span>');
+  // Lignes spéciales : titres, citations, listes
+  html = html.split('\n').map(line => {
+    let m;
+    if ((m = line.match(/^(#{1,3}) (.+)$/))) return `<div class="h${m[1].length}">${m[2]}</div>`;
+    if ((m = line.match(/^-# (.+)$/)))        return `<div class="subtext">${m[1]}</div>`;
+    if ((m = line.match(/^&gt; ?(.*)$/)))     return `<div class="quote">${m[1]}</div>`;
+    if ((m = line.match(/^\s*[-*] (.+)$/)))  return `<div class="li">• ${m[1]}</div>`;
+    return line + '<br>';
+  }).join('');
+  html = html.replace(/(<br>)+$/, '');
+  html = html.replace(/\u0001(\d+)\u0001/g, (_, i) => inline[i]);
+  return html.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[i]);
+}
+
+function renderTranscriptEmbed(embed, ctx) {
+  const color  = embed.color != null ? '#' + embed.color.toString(16).padStart(6, '0') : '#1e1f22';
+  const author = embed.author?.name ? `<div class="e-author">${tEsc(embed.author.name)}</div>` : '';
+  const title  = embed.title
+    ? (embed.url ? `<a class="e-title" href="${tEsc(embed.url)}" target="_blank" rel="noopener noreferrer">${discordMdToHtml(embed.title, ctx)}</a>` : `<div class="e-title">${discordMdToHtml(embed.title, ctx)}</div>`)
+    : '';
+  const desc   = embed.description ? `<div class="e-desc">${discordMdToHtml(embed.description, ctx)}</div>` : '';
+  const fields = (embed.fields || []).length
+    ? `<div class="e-fields">${embed.fields.map(f => `<div class="e-field${f.inline ? ' inline' : ''}"><div class="e-fname">${discordMdToHtml(f.name, ctx)}</div><div class="e-fvalue">${discordMdToHtml(f.value, ctx)}</div></div>`).join('')}</div>`
+    : '';
+  const thumb  = embed.thumbnail?.url ? `<img class="e-thumb" src="${tEsc(embed.thumbnail.url)}" alt="">` : '';
+  const image  = embed.image?.url ? `<img class="e-image" src="${tEsc(embed.image.url)}" alt="" loading="lazy">` : '';
+  const footerParts = [embed.footer?.text ? tEsc(embed.footer.text) : '', embed.timestamp ? tEsc(tDate(embed.timestamp)) : ''].filter(Boolean);
+  const footer = footerParts.length ? `<div class="e-footer">${footerParts.join(' • ')}</div>` : '';
+  return `<div class="embed" style="border-left-color:${color}"><div class="e-main"><div class="e-body">${author}${title}${desc}${fields}</div>${thumb}</div>${image}${footer}</div>`;
+}
+
+// Télécharge une image jointe pour l'intégrer dans le fichier (les liens Discord expirent après la suppression du salon)
+async function inlineAttachment(att, budget) {
+  const isImage = (att.contentType || '').startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
+  if (!isImage || !att.size || att.size > TRANSCRIPT_IMG_MAX || budget.used + att.size > TRANSCRIPT_IMG_TOTAL) return null;
+  try {
+    const res = await fetch(att.url);
+    if (!res.ok) return null;
+    const buffer = await res.buffer();
+    budget.used += buffer.length;
+    const type = att.contentType || res.headers.get('content-type') || 'image/png';
+    return `data:${type};base64,${buffer.toString('base64')}`;
+  } catch { return null; }
+}
+
+async function buildTranscriptHTML({ channel, messages, orders, client, closedBy }) {
+  const guild = channel.guild;
+  const ctx = {
+    userName:    id => guild.members.cache.get(id)?.displayName || discordBot.users.cache.get(id)?.username || 'utilisateur',
+    roleName:    id => guild.roles.cache.get(id)?.name || 'rôle',
+    channelName: id => guild.channels.cache.get(id)?.name || 'salon',
+  };
+  const budget = { used: 0 };
+  const participants = new Map();
+  let prevAuthor = null, prevTime = 0;
+  const rows = [];
+
+  for (const msg of messages) {
+    const name   = msg.member?.displayName || msg.author.globalName || msg.author.username;
+    const color  = msg.member?.displayHexColor && msg.member.displayHexColor !== '#000000' ? msg.member.displayHexColor : '#f2f3f5';
+    const avatar = msg.author.displayAvatarURL({ extension: 'png', size: 64 });
+    participants.set(msg.author.id, { name, count: (participants.get(msg.author.id)?.count || 0) + 1 });
+
+    // Messages système (épinglé, etc.)
+    if (msg.system) { rows.push(`<div class="sys">ℹ️ ${tEsc(name)} — message système (${tEsc(tDate(msg.createdAt))})</div>`); prevAuthor = null; continue; }
+
+    const grouped = prevAuthor === msg.author.id && msg.createdTimestamp - prevTime < 7 * 60 * 1000 && !msg.reference;
+    prevAuthor = msg.author.id; prevTime = msg.createdTimestamp;
+
+    let reply = '';
+    if (msg.reference?.messageId) {
+      const ref = messages.find(m => m.id === msg.reference.messageId);
+      const refName = ref ? (ref.member?.displayName || ref.author.username) : 'message supprimé';
+      const refText = ref ? (ref.content || (ref.embeds.length ? '[embed]' : '[pièce jointe]')).slice(0, 90) : '';
+      reply = `<div class="reply">↪ <strong>${tEsc(refName)}</strong> ${tEsc(refText)}</div>`;
+    }
+
+    const content = msg.content ? `<div class="content">${discordMdToHtml(msg.content, ctx)}${msg.editedTimestamp ? ' <span class="edited">(modifié)</span>' : ''}</div>` : '';
+    const embeds  = msg.embeds.map(e => renderTranscriptEmbed(e, ctx)).join('');
+
+    const atts = [];
+    for (const att of msg.attachments.values()) {
+      const dataUri = await inlineAttachment(att, budget);
+      if (dataUri) atts.push(`<a href="${tEsc(att.url)}" target="_blank" rel="noopener noreferrer"><img class="att-img" src="${dataUri}" alt="${tEsc(att.name)}"></a>`);
+      else atts.push(`<a class="att-file" href="${tEsc(att.url)}" target="_blank" rel="noopener noreferrer">📎 ${tEsc(att.name)} <span>(${(att.size / 1024).toFixed(0)} Ko — lien Discord, peut expirer)</span></a>`);
+    }
+    const stickers = [...(msg.stickers?.values() || [])].map(s => `<div class="att-file">🏷️ Sticker : ${tEsc(s.name)}</div>`).join('');
+    const reactions = [...(msg.reactions?.cache.values() || [])].map(r => `<span class="reaction">${tEsc(r.emoji.id ? ':' + r.emoji.name + ':' : r.emoji.name)} ${r.count}</span>`).join('');
+
+    const body = `${reply}${content}${embeds}${atts.join('')}${stickers}${reactions ? `<div class="reactions">${reactions}</div>` : ''}`;
+    if (grouped) {
+      rows.push(`<div class="msg grouped"><div class="gutter"><span class="hover-time">${tEsc(new Date(msg.createdAt).toLocaleTimeString('fr-FR', { timeZone: TRANSCRIPT_TZ, hour: '2-digit', minute: '2-digit' }))}</span></div><div class="body">${body}</div></div>`);
+    } else {
+      rows.push(`<div class="msg"><img class="avatar" src="${tEsc(avatar)}" alt=""><div class="body"><div class="meta"><span class="author" style="color:${tEsc(color)}">${tEsc(name)}</span>${msg.author.bot ? '<span class="bot">APP</span>' : ''}<span class="time">${tEsc(tDate(msg.createdAt))}</span></div>${body}</div></div>`);
+    }
+  }
+
+  const ordersHtml = orders.length ? `
+    <div class="card"><div class="card-title">🛒 Commande${orders.length > 1 ? 's' : ''} liée${orders.length > 1 ? 's' : ''} à ce ticket</div>
+    <table><thead><tr><th>Date</th><th>Articles</th><th>Total</th><th>Statut</th></tr></thead><tbody>
+    ${orders.map(o => {
+      const items = (Array.isArray(o.items) ? o.items : []).map(i => `${tEsc(i.name)}${i.quantity > 1 ? ' ×' + i.quantity : ''}`).join(', ') || '—';
+      const st = STATUS_CONFIG[o.status] || STATUS_CONFIG.pending;
+      return `<tr><td>${tEsc(tDate(o.created_at))}</td><td>${items}</td><td class="num">${tEsc(formatPrice(o.total_price))}${o.promo_code ? `<br><span class="promo">🏷️ ${tEsc(o.promo_code)}</span>` : ''}</td><td>${st.emoji} ${tEsc(st.label)}</td></tr>`;
+    }).join('')}
+    </tbody></table></div>` : '';
+
+  const participantsHtml = [...participants.values()].map(p => `<span class="chip">${tEsc(p.name)} · ${p.count}</span>`).join('');
+  const guildIcon = guild.iconURL({ extension: 'png', size: 64 });
+
+  // En-tête lisible directement dans l'aperçu du fichier sur Discord
+  const safe = str => String(str ?? '').replace(/--/g, '—');
+  const headerComment = [
+    '<!--',
+    `Serveur : ${safe(guild.name)} (${guild.id})`,
+    `Salon : ${safe(channel.name)} (${channel.id})`,
+    `Messages : ${messages.length}`,
+    '',
+    'Utilisateurs :',
+    ...[...participants.entries()].map(([uid, p]) => `  ${String(p.count).padStart(4)} - ${safe(p.name)} (${uid})`),
+    '-->',
+  ].join('\n');
+
+  return `${headerComment}
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transcript — #${tEsc(channel.name)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#313338;color:#dbdee1;font-family:"gg sans","Noto Sans","Segoe UI",Arial,sans-serif;font-size:15px;line-height:1.375}
+a{color:#00a8fc;text-decoration:none}a:hover{text-decoration:underline}
+header{background:#2b2d31;border-bottom:1px solid #1e1f22;padding:20px 24px;display:flex;gap:16px;align-items:center}
+header img{width:56px;height:56px;border-radius:50%}
+header h1{font-size:1.25rem;color:#fff}header p{color:#b5bac1;font-size:0.85rem;margin-top:2px}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+.card{background:#2b2d31;border:1px solid #1e1f22;border-radius:8px;padding:16px 18px;margin-bottom:16px}
+.card-title{font-weight:700;color:#fff;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 20px}
+.grid div span{display:block;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:#949ba4;font-weight:700}
+.grid div strong{color:#fff;font-weight:600}
+.chip{display:inline-block;background:#1e1f22;border-radius:12px;padding:2px 10px;margin:4px 6px 0 0;font-size:0.8rem}
+table{width:100%;border-collapse:collapse;font-size:0.88rem}th{text-align:left;color:#949ba4;font-size:0.72rem;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #3f4147}
+td{padding:8px;border-bottom:1px solid #3f4147;vertical-align:top}td.num{white-space:nowrap;color:#fff;font-weight:600}.promo{color:#4ade80;font-size:0.78rem;font-weight:400}
+.messages{padding-top:8px}
+.msg{display:flex;gap:16px;padding:6px 8px 2px;margin-top:12px;border-radius:4px}.msg:hover{background:#2e3035}
+.msg.grouped{margin-top:0;padding-top:1px}
+.avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;margin-top:2px}
+.gutter{width:40px;flex-shrink:0;text-align:right}.hover-time{visibility:hidden;font-size:0.68rem;color:#949ba4}.msg.grouped:hover .hover-time{visibility:visible}
+.body{min-width:0;flex:1}
+.meta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.author{font-weight:600}
+.bot{background:#5865f2;color:#fff;font-size:0.62rem;font-weight:700;padding:1px 5px;border-radius:3px}
+.time{font-size:0.75rem;color:#949ba4}
+.content{word-wrap:break-word;white-space:normal}
+.edited{font-size:0.7rem;color:#949ba4}
+.h1{font-size:1.5rem;font-weight:700;color:#fff;margin:8px 0 4px}.h2{font-size:1.25rem;font-weight:700;color:#fff;margin:8px 0 4px}.h3{font-size:1.05rem;font-weight:700;color:#fff;margin:6px 0 2px}
+.subtext{font-size:0.8rem;color:#949ba4}.quote{border-left:4px solid #4e5058;padding-left:10px}.li{padding-left:8px}
+.mention{background:rgba(88,101,242,0.3);color:#c9cdfb;border-radius:3px;padding:0 2px;font-weight:500}
+.ts{background:#1e1f22;border-radius:3px;padding:0 3px}
+code{background:#1e1f22;border-radius:3px;padding:1px 4px;font-family:Consolas,monospace;font-size:0.85em}
+pre{background:#1e1f22;border:1px solid #232428;border-radius:4px;padding:8px;margin:4px 0;white-space:pre-wrap;font-family:Consolas,monospace;font-size:0.85em}
+.spoiler{background:#1e1f22;color:transparent;border-radius:3px;cursor:pointer}.spoiler:hover{color:inherit}
+.emoji{width:22px;height:22px;vertical-align:-5px}
+.reply{font-size:0.8rem;color:#b5bac1;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.embed{background:#2b2d31;border-left:4px solid #1e1f22;border-radius:4px;padding:10px 14px 12px 12px;margin-top:6px;max-width:520px}
+.e-main{display:flex;gap:12px}.e-body{flex:1;min-width:0}.e-thumb{width:80px;height:80px;object-fit:cover;border-radius:4px}
+.e-author{font-size:0.85rem;font-weight:600;color:#fff;margin-bottom:4px}
+.e-title{display:block;font-weight:700;color:#fff;margin-bottom:6px}a.e-title{color:#00a8fc}
+.e-desc{font-size:0.88rem}
+.e-fields{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px}.e-field{flex:1 1 100%}.e-field.inline{flex:1 1 30%;min-width:140px}
+.e-fname{font-size:0.85rem;font-weight:700;color:#fff}.e-fvalue{font-size:0.85rem}
+.e-image{max-width:100%;border-radius:4px;margin-top:10px;display:block}
+.e-footer{font-size:0.75rem;color:#b5bac1;margin-top:8px}
+.att-img{max-width:min(400px,100%);max-height:350px;border-radius:6px;margin-top:6px;display:block}
+.att-file{display:inline-block;background:#2b2d31;border:1px solid #1e1f22;border-radius:6px;padding:8px 12px;margin-top:6px;font-size:0.88rem}.att-file span{color:#949ba4;font-size:0.75rem}
+.reactions{margin-top:4px}.reaction{display:inline-block;background:#2b2d31;border:1px solid #3f4147;border-radius:8px;padding:1px 7px;margin-right:4px;font-size:0.8rem}
+.sys{color:#949ba4;font-size:0.85rem;padding:6px 8px 6px 64px}
+footer{text-align:center;color:#949ba4;font-size:0.78rem;margin-top:30px}
+@media (max-width:600px){.msg{gap:10px}.avatar,.gutter{width:32px;height:32px}}
+</style></head><body>
+<header>${guildIcon ? `<img src="${tEsc(guildIcon)}" alt="">` : ''}<div><h1>📜 Transcript — #${tEsc(channel.name)}</h1><p>${tEsc(guild.name)} · Cac's GTAV Mods</p></div></header>
+<div class="wrap">
+  <div class="card"><div class="grid">
+    <div><span>Client</span><strong>${tEsc(client.username || 'Inconnu')}</strong>${client.id ? `<br><code>${tEsc(client.id)}</code>` : ''}</div>
+    <div><span>Ticket ouvert le</span><strong>${tEsc(tDate(channel.createdAt))}</strong></div>
+    <div><span>Fermé le</span><strong>${tEsc(tDate(new Date()))}</strong></div>
+    <div><span>Fermé par</span><strong>${tEsc(closedBy.name)}</strong></div>
+    <div><span>Messages</span><strong>${messages.length}</strong></div>
+  </div>
+  ${participantsHtml ? `<div style="margin-top:12px"><span style="font-size:0.72rem;text-transform:uppercase;color:#949ba4;font-weight:700">Participants</span><br>${participantsHtml}</div>` : ''}
+  </div>
+  ${ordersHtml}
+  <div class="messages">${rows.join('\n') || '<p style="color:#949ba4">Aucun message.</p>'}</div>
+  <footer>Transcript généré automatiquement le ${tEsc(tDate(new Date(), true))} (heure de Paris)</footer>
+</div></body></html>`;
+}
+
+// Archive complète d'un ticket. Renvoie { saved, id, sentToLog, sentToClient, messageCount, warnings }
+// Lève une erreur si le transcript n'a pu être gardé NULLE PART (le salon ne doit alors pas être supprimé).
+async function archiveTicket(channel, closedByUser) {
+  const cfg      = await getTranscriptConfig();
+  const warnings = [];
+
+  const botPerms = channel.permissionsFor(discordBot.user);
+  if (!botPerms?.has(PermissionFlagsBits.ReadMessageHistory)) throw new Error('le bot n\'a pas la permission « Voir les anciens messages » dans ce salon');
+
+  const messages = await fetchAllTicketMessages(channel);
+
+  // Commandes liées à ce ticket (pour le résumé + identifier le client)
+  let orders = [];
+  const { data: orderRows, error: ordersError } = await supabase.from('orders').select('*').eq('channel_id', channel.id).order('created_at', { ascending: true });
+  if (ordersError) warnings.push('commandes non lues : ' + ordersError.message); else orders = orderRows || [];
+
+  let client = { id: orders[0]?.discord_id || null, username: orders[0]?.discord_username || null };
+  if (!client.id) { // secours : le membre qui a une permission personnelle sur le salon
+    const ow = channel.permissionOverwrites.cache.find(o => o.type === 1 && o.id !== discordBot.user.id);
+    if (ow) { client.id = ow.id; client.username = channel.guild.members.cache.get(ow.id)?.displayName || null; }
+  }
+
+  const closedBy = { id: closedByUser.id, name: closedByUser.globalName || closedByUser.username };
+  const html     = await buildTranscriptHTML({ channel, messages, orders, client, closedBy });
+  const buffer   = Buffer.from(html, 'utf8');
+
+  // 1. Sauvegarde Supabase (consultable depuis le panel admin)
+  let id = null, number = null;
+  const { data: saved, error: saveError } = await supabase.from('transcripts').insert({
+    channel_id: channel.id, channel_name: channel.name,
+    client_discord_id: client.id, client_username: client.username,
+    closed_by: closedBy.name, message_count: messages.length, html,
+  }).select('id').single();
+  if (saveError) warnings.push('sauvegarde base de données impossible : ' + saveError.message);
+  else {
+    id = saved.id;
+    // Numéro de ticket (colonne "number" facultative : si elle n'existe pas, on continue sans)
+    const { data: numRow, error: numError } = await supabase.from('transcripts').select('number').eq('id', id).maybeSingle();
+    if (!numError && numRow?.number != null) number = numRow.number;
+  }
+  const identifier = number != null ? String(number) : (channel.name.match(/(\d+)$/)?.[1] || channel.name);
+  const fileName   = `transcript-${number != null ? number : channel.name}.html`;
+
+  // Embed façon « Ticket Fermé »
+  const guild      = channel.guild;
+  const openedUnix = Math.floor(channel.createdTimestamp / 1000);
+  const ordersTotal = orders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  const panneau    = orders.length
+    ? `Commande${orders.length > 1 ? 's' : ''} (${orders.length}) · ${formatPrice(ordersTotal)}`
+    : 'Commande';
+  const summary = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setAuthor({ name: guild.name, iconURL: guild.iconURL({ extension: 'png', size: 64 }) || undefined })
+    .setTitle('🔒 Ticket Fermé')
+    .addFields(
+      { name: '🆔 Identifiant',       value: identifier.slice(0, 1024),                                           inline: true },
+      { name: '✅ Ouvert par',        value: client.id ? `<@${client.id}>` : (client.username || 'Inconnu'),      inline: true },
+      { name: '❌ Fermé par',         value: `<@${closedBy.id}>`,                                                 inline: true },
+      { name: '📅 Date d\'ouverture', value: `<t:${openedUnix}:f>`,                                              inline: true },
+      { name: '🛒 Panneau',           value: panneau.slice(0, 1024),                                              inline: true },
+      { name: '💬 Messages',          value: String(messages.length),                                             inline: true },
+      { name: '#️⃣ Nom du ticket',     value: channel.name,                                                        inline: false },
+    )
+    .setTimestamp();
+
+  const canAttach = buffer.length <= TRANSCRIPT_DISCORD_MAX;
+  if (!canAttach) summary.setDescription('⚠️ Transcript trop lourd pour être joint ici : ouvre-le avec le bouton ci-dessous.');
+  const files = canAttach ? [new AttachmentBuilder(buffer, { name: fileName })] : [];
+
+  // Bouton « Voir la transcription » (page du panel admin, réservée aux admins connectés)
+  const panelUrl   = id ? `${SITE_BASE_URL}/api/admin/transcripts/${id}` : null;
+  const components = panelUrl
+    ? [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Voir la transcription').setURL(panelUrl))]
+    : [];
+
+  // 2. Salon Discord de logs
+  let sentToLog = false;
+  if (cfg.transcript_channel_id) {
+    try {
+      const logChannel = await discordBot.channels.fetch(cfg.transcript_channel_id);
+      await logChannel.send({ embeds: [summary], files, components, allowedMentions: { parse: [] } });
+      sentToLog = true;
+    } catch (e) { warnings.push('envoi dans le salon des transcripts impossible : ' + e.message); }
+  }
+
+  // 3. Copie au client (option)
+  let sentToClient = false;
+  if (cfg.transcript_dm_client === 'true' && client.id && canAttach) {
+    try {
+      const user = await discordBot.users.fetch(client.id);
+      // Le client reçoit le même embed + le fichier (sans le bouton : la page du panel est réservée aux admins)
+      await user.send({ content: `📜 Voici l'historique de ton ticket **#${channel.name}** sur Cac's GTAV Mods. Merci pour ta commande !`, embeds: [summary], files: [new AttachmentBuilder(buffer, { name: fileName })], allowedMentions: { parse: [] } });
+      sentToClient = true;
+    } catch (e) { warnings.push('MP au client impossible (MP fermés ?)'); }
+  }
+
+  if (!id && !sentToLog) throw new Error(warnings.join(' · ') || 'aucune destination configurée');
+  return { saved: !!id, id, sentToLog, sentToClient, messageCount: messages.length, warnings };
 }
 
 // ── 1. BASE ───────────────────────────────────────────────────
@@ -850,7 +1258,23 @@ app.post('/api/admin/logout', (req, res) => { req.session.isAdmin = false; res.j
 app.get('/api/admin/check', (req, res) => { const user = req.session.user; res.json({ isAdmin: !!req.session.isAdmin || (user && config.ADMIN_ROLE_IDS.some(id => user.roles.includes(id))) }); });
 app.get('/api/admin/data', requireAdmin, async (req, res) => { try { const [site, categories, mods, promotions, discordRoles] = await Promise.all([getSiteConfig(), getCategories(), getMods(), getPromotions(), getDiscordRoles()]); res.json(formatData(site, categories, mods, promotions, discordRoles)); } catch (err) { res.status(500).json({ error: 'Erreur lecture base de données' }); } });
 
-app.get('/api/admin/orders', requireAdmin, async (req, res) => { try { const { data: orders, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false }); if (error) throw error; res.json(orders); } catch (err) { res.status(500).json({ error: 'Erreur lecture commandes' }); } });
+app.get('/api/admin/orders', requireAdmin, async (req, res) => {
+  try {
+    const { data: orders, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    // Ajoute l'ID du transcript du ticket (si le ticket a été fermé avec !close)
+    const channelIds = [...new Set(orders.map(o => o.channel_id).filter(Boolean))];
+    if (channelIds.length) {
+      const { data: trs, error: trError } = await supabase.from('transcripts').select('id, channel_id, created_at').in('channel_id', channelIds).order('created_at', { ascending: false });
+      if (!trError) {
+        const byChannel = {};
+        for (const t of trs || []) if (!byChannel[t.channel_id]) byChannel[t.channel_id] = t.id; // le plus récent
+        for (const o of orders) o.transcript_id = byChannel[o.channel_id] || null;
+      } // table absente → on ignore, la liste des commandes reste utilisable
+    }
+    res.json(orders);
+  } catch (err) { res.status(500).json({ error: 'Erreur lecture commandes' }); }
+});
 
 app.patch('/api/admin/orders/:id/status', requireAdmin, async (req, res) => {
   const { id } = req.params, { status } = req.body;
@@ -1093,6 +1517,84 @@ app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
       payload.allowedMentions = { roles: [cfg.embed_role_id] };
     }
     await channel.send(payload);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 📜 Transcripts (panel admin) ─────────────────────────────
+async function isTranscriptTableReady() {
+  const { error } = await supabase.from('transcripts').select('id').limit(1);
+  return !error;
+}
+
+app.get('/api/admin/transcript-config', requireAdmin, async (req, res) => {
+  try {
+    const cfg = await getTranscriptConfig();
+    res.json({ config: cfg, tableReady: await isTranscriptTableReady() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/transcript-config', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const channelId = String(b.channelId ?? '').trim();
+  if (channelId && !/^\d{17,20}$/.test(channelId)) return res.status(400).json({ error: 'ID de salon invalide (17 à 20 chiffres, ou vide).' });
+  try {
+    const rows = [
+      { key: 'transcript_enabled',    value: b.enabled  === false ? 'false' : 'true' },
+      { key: 'transcript_channel_id', value: channelId },
+      { key: 'transcript_dm_client',  value: b.dmClient === true  ? 'true'  : 'false' },
+    ];
+    const { error } = await supabase.from('site_config').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
+    res.json({ success: true, config: await getTranscriptConfig() });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
+});
+
+// Vérifie que le bot peut écrire dans le salon choisi (message de test)
+app.post('/api/admin/transcript-config/test', requireAdmin, async (req, res) => {
+  const channelId = String(req.body?.channelId ?? '').trim();
+  if (!/^\d{17,20}$/.test(channelId)) return res.status(400).json({ error: 'Renseigne d\'abord un ID de salon valide.' });
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté." });
+  try {
+    const channel = await discordBot.channels.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isTextBased?.() || !channel.guild) return res.status(400).json({ error: 'Salon introuvable (vérifie l\'ID, et que le bot est bien sur ce serveur).' });
+    const perms   = channel.permissionsFor(discordBot.user);
+    const needed  = [['ViewChannel', 'Voir le salon'], ['SendMessages', 'Envoyer des messages'], ['EmbedLinks', 'Intégrer des liens'], ['AttachFiles', 'Joindre des fichiers']];
+    const missing = needed.filter(([flag]) => !perms?.has(PermissionFlagsBits[flag])).map(([, label]) => label);
+    if (missing.length) return res.status(400).json({ error: `Il manque au bot ces permissions dans #${channel.name} : ${missing.join(', ')}.` });
+    await channel.send({ content: `🧪 Test depuis le panel admin : les transcripts des tickets arriveront ici. (demandé par ${req.session.user.username})`, allowedMentions: { parse: [] } });
+    res.json({ success: true, channelName: channel.name });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Liste des derniers transcripts (sans le HTML, trop lourd)
+app.get('/api/admin/transcripts', requireAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('transcripts').select('id, channel_name, client_username, client_discord_id, closed_by, message_count, created_at').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Afficher (ou télécharger avec ?download=1) un transcript
+app.get('/api/admin/transcripts/:id', requireAdmin, async (req, res) => {
+  if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) return res.status(400).send('ID invalide');
+  try {
+    const { data, error } = await supabase.from('transcripts').select('channel_name, html').eq('id', req.params.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return res.status(404).send('Transcript introuvable');
+    // Sécurité : aucun script ne peut s'exécuter dans la page du transcript
+    res.set('Content-Security-Policy', "default-src 'none'; img-src * data:; style-src 'unsafe-inline'");
+    res.set('X-Content-Type-Options', 'nosniff');
+    if (req.query.download === '1') res.set('Content-Disposition', `attachment; filename="transcript-${String(data.channel_name || 'ticket').replace(/[^\w-]/g, '')}.html"`);
+    res.type('html').send(data.html);
+  } catch (err) { res.status(500).send('Erreur : ' + err.message); }
+});
+
+app.delete('/api/admin/transcripts/:id', requireAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from('transcripts').delete().eq('id', req.params.id);
+    if (error) throw error;
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });

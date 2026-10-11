@@ -22,6 +22,7 @@ async function loadAdminData() {
     data = await res.json();
     renderDashboard(); renderModsList(); renderCategoriesList(); renderPromosList(); renderRolesList(); loadConfigForm();
     loadEmbedConfig(); // config de l'embed Discord (onglet Configuration + modale d'annonce)
+    loadTranscriptConfig(); // options des transcripts de tickets
   } catch (e) { console.error('Erreur chargement admin:', e); showToast('Erreur lors du chargement des données', true); }
 }
 
@@ -48,6 +49,7 @@ function switchTab(tab) {
   if (tab === 'orders') loadOrders();
   if (tab === 'live')   initLive();
   if (tab === 'codes')  loadPromoCodes();
+  if (tab === 'config') loadTranscriptsList();
 }
 
 // ─── DASHBOARD ───────────────────────────────────────────────
@@ -95,7 +97,7 @@ async function loadOrders() {
       const itemNames = items.map(i => i.name).join(', ');
 
       return `
-        <div class="order-row" data-status="${status}" style="display:grid;grid-template-columns:12px 1fr 100px 120px 160px;gap:16px;align-items:center;padding:14px 18px;background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);transition:border-color 0.2s">
+        <div class="order-row" data-status="${status}" style="display:grid;grid-template-columns:12px 1fr 110px 120px 160px auto;gap:16px;align-items:center;padding:14px 18px;background:var(--bg-2);border:1px solid var(--border-b);border-radius:var(--r);transition:border-color 0.2s">
           <div style="width:10px;height:10px;border-radius:50%;background:${color}"></div>
           <div style="min-width:0">
             <div style="font-size:0.92rem;font-weight:700;color:var(--white)">${esc(order.discord_username || 'Visiteur')}</div>
@@ -103,7 +105,7 @@ async function loadOrders() {
             <div style="font-size:0.75rem;color:var(--grey-l);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(itemNames)}</div>
             <div style="font-size:0.7rem;color:var(--grey-m);font-family:var(--mono);margin-top:2px">#${esc(order.ticket_channel || '')}</div>
           </div>
-          <div style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);text-align:right">${formatEUR(order.total_price)}</div>${order.promo_code ? `<div style="font-family:var(--mono);font-size:0.7rem;color:#4ade80;text-align:right;margin-top:2px">🏷️ ${esc(order.promo_code)} (-${formatEUR(order.promo_discount)})</div>` : ''}
+          <div style="font-family:var(--mono);font-size:0.9rem;font-weight:700;color:var(--white);text-align:right">${formatEUR(order.total_price)}${order.promo_code ? `<div style="font-size:0.7rem;font-weight:400;color:#4ade80;margin-top:2px">🏷️ ${esc(order.promo_code)} (-${formatEUR(order.promo_discount)})</div>` : ''}</div>
           <span style="display:inline-flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:0.68rem;padding:4px 10px;border-radius:20px;color:${color};border:1px solid ${color}40;background:${color}12;white-space:nowrap">${label}</span>
           <select class="order-status-select" data-id="${order.id}" onchange="changeOrderStatus('${order.id}', this)">
             <option value="pending"    ${status==='pending'    ? 'selected' : ''}>🟡 En attente</option>
@@ -112,7 +114,10 @@ async function loadOrders() {
             <option value="delivered"  ${status==='delivered'  ? 'selected' : ''}>🟢 Livré</option>
             <option value="cancelled"  ${status==='cancelled'  ? 'selected' : ''}>🔴 Annulé</option>
           </select>
-          <button onclick="deleteOrder('${order.id}', this)" title="Supprimer" style="background:transparent;border:1px solid rgba(217,0,0,0.3);color:var(--red);width:32px;height:32px;border-radius:var(--r);cursor:pointer;font-size:0.85rem;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.background='rgba(217,0,0,0.15)'" onmouseout="this.style.background='transparent'">🗑️</button>
+          <div style="display:flex;gap:6px;justify-content:flex-end">
+            ${order.transcript_id ? `<a href="/api/admin/transcripts/${esc(order.transcript_id)}" target="_blank" rel="noopener" title="Voir le transcript du ticket" style="border:1px solid rgba(88,101,242,0.4);color:#8b93ff;width:32px;height:32px;border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:0.85rem;flex-shrink:0">📜</a>` : ''}
+            <button onclick="deleteOrder('${order.id}', this)" title="Supprimer" style="background:transparent;border:1px solid rgba(217,0,0,0.3);color:var(--red);width:32px;height:32px;border-radius:var(--r);cursor:pointer;font-size:0.85rem;flex-shrink:0;transition:all 0.2s" onmouseover="this.style.background='rgba(217,0,0,0.15)'" onmouseout="this.style.background='transparent'">🗑️</button>
+          </div>
         </div>`;
     }).join('');
 
@@ -1251,6 +1256,113 @@ function buildDiscordPreviewHTML(cfg, vars) {
         </div>
       </div>
     </div>`;
+}
+
+// ─── 📜 TRANSCRIPTS DES TICKETS ──────────────────────────────
+async function loadTranscriptConfig() {
+  try {
+    const res    = await fetch('/api/admin/transcript-config');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    const cfg = result.config;
+    setToggle('toggleTranscriptEnabled', cfg.transcript_enabled !== 'false');
+    setToggle('toggleTranscriptDm',      cfg.transcript_dm_client === 'true');
+    document.getElementById('transcriptChannelId').value = cfg.transcript_channel_id || '';
+    document.getElementById('transcriptTableWarn').style.display = result.tableReady ? 'none' : 'block';
+  } catch (e) {
+    console.error('Erreur config transcripts :', e);
+    setEmbedStatus('transcriptStatus', '❌ Impossible de charger la config des transcripts : ' + e.message, 'error');
+  }
+}
+
+function toggleTranscriptOption(id) {
+  const el = document.getElementById(id);
+  setToggle(id, !el.classList.contains('on'));
+  setEmbedStatus('transcriptStatus', 'ℹ️ Modifié — pense à enregistrer.', 'info');
+}
+
+async function saveTranscriptConfig() {
+  const channelId = document.getElementById('transcriptChannelId').value.trim();
+  if (channelId && !/^\d{17,20}$/.test(channelId)) { setEmbedStatus('transcriptStatus', '❌ ID de salon invalide (17 à 20 chiffres, ou vide).', 'error'); return; }
+  const btn = document.getElementById('btnSaveTranscript');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res = await fetch('/api/admin/transcript-config', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: isToggleOn('toggleTranscriptEnabled'), dmClient: isToggleOn('toggleTranscriptDm'), channelId })
+    });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('transcriptStatus', '✅ Options des transcripts enregistrées.', 'ok');
+    showToast('Transcripts : options enregistrées !');
+  } catch (e) {
+    setEmbedStatus('transcriptStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Enregistrer';
+  }
+}
+
+async function testTranscriptChannel() {
+  const channelId = document.getElementById('transcriptChannelId').value.trim();
+  const btn = document.getElementById('btnTestTranscriptChannel');
+  btn.disabled = true; btn.textContent = '⏳ Test...';
+  try {
+    const res    = await fetch('/api/admin/transcript-config/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channelId }) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('transcriptStatus', `✅ Message de test envoyé dans #${result.channelName}. N'oublie pas d'enregistrer.`, 'ok');
+    showToast('Salon OK !');
+  } catch (e) {
+    setEmbedStatus('transcriptStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '🧪 Tester le salon';
+  }
+}
+
+async function loadTranscriptsList() {
+  const box = document.getElementById('transcriptsList');
+  if (!box) return;
+  box.innerHTML = '<div style="color:var(--grey-m);font-size:0.82rem">Chargement…</div>';
+  try {
+    const res  = await fetch('/api/admin/transcripts');
+    const list = await readJsonSafe(res);
+    if (!res.ok) throw new Error(list.error || 'Erreur inconnue');
+    if (!list.length) { box.innerHTML = '<div style="color:var(--grey-m);font-size:0.82rem;font-style:italic">Aucun transcript pour l\'instant — ils apparaîtront ici après un <code>!close</code>.</div>'; return; }
+    box.innerHTML = list.map(t => {
+      const date = new Date(t.created_at).toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `
+        <div class="tr-row">
+          <div class="tr-info">
+            <div class="tr-name">#${esc(t.channel_name || 'ticket')} — ${esc(t.client_username || 'client inconnu')}</div>
+            <div class="tr-meta">${date} · ${t.message_count || 0} messages · fermé par ${esc(t.closed_by || '?')}</div>
+          </div>
+          <a class="btn btn-ghost btn-sm" href="/api/admin/transcripts/${esc(t.id)}" target="_blank" rel="noopener">👁️ Voir</a>
+          <a class="btn btn-ghost btn-sm" href="/api/admin/transcripts/${esc(t.id)}?download=1">⬇️</a>
+          <button class="btn-icon del" onclick="deleteTranscript('${esc(t.id)}', this)" title="Supprimer">🗑️</button>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div style="color:var(--grey-m);font-size:0.82rem">Liste indisponible (${esc(e.message)}).</div>`;
+  }
+}
+
+async function deleteTranscript(id, btn) {
+  if (!confirm('Supprimer définitivement ce transcript ?')) return;
+  btn.disabled = true;
+  try {
+    const res    = await fetch(`/api/admin/transcripts/${id}`, { method: 'DELETE' });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    btn.closest('.tr-row').remove();
+    showToast('Transcript supprimé');
+  } catch (e) { btn.disabled = false; showToast('Erreur : ' + e.message, true); }
+}
+
+function copyTranscriptSql() {
+  const sql = document.getElementById('transcriptSql').textContent;
+  navigator.clipboard.writeText(sql).then(() => showToast('SQL copié !'), () => showToast('Copie impossible : sélectionne le texte à la main', true));
 }
 
 let _imageList = [];
