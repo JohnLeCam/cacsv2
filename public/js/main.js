@@ -25,6 +25,8 @@ async function loadAll() {
     renderCategoryFilters();
     renderMods();
     cleanCart(); // supprime les articles fantômes au chargement
+    updateCoreOptionLabel(); // prix [CORE] réglé dans le panel
+    if (typeof renderCartItems === 'function') renderCartItems(); // prix des options à jour dans le panier
     await checkMaintenanceBanner();
     sendVisitorPing(); // mise à jour avec le username Discord si connecté
 
@@ -637,10 +639,30 @@ function savePromoState() {
   } catch { /* stockage indisponible */ }
 }
 
+// Prix des options : réglés dans le panel admin (valeurs par défaut tant que le site charge)
+function getOptionPrices() {
+  const p = siteData?.site?.optionPrices || {};
+  const num = (v, d) => (typeof v === 'number' && v >= 0 ? v : d);
+  return { debadgage: num(p.debadgage, 10), retexture: num(p.retexture, 5), core: num(p.core, 10) };
+}
+// Supplément des options d'un article (prix unitaire)
+function getItemExtra(item) {
+  const opts = item.options || {}, prices = getOptionPrices();
+  return (opts.debadgage ? prices.debadgage : 0) + (opts.retexture ? prices.retexture : 0);
+}
+// Affiche « +10€ » (ou « offert » si le prix est à 0)
+function formatOptionPrice(n) { return n > 0 ? '+' + formatPrice(n).replace(/\s/g, '') : 'offert'; }
+
+// Met à jour le prix affiché à côté de la case [CORE] (dans index.html)
+function updateCoreOptionLabel() {
+  const em = document.getElementById('cartCoreOption')?.nextElementSibling?.querySelector('em');
+  if (em) em.textContent = formatOptionPrice(getOptionPrices().core);
+}
+
 // Total du panier AVANT code promo (articles + options + [CORE])
 function getCartSubtotal() {
-  const coreOption = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
-  return cart.reduce((sum, i) => { const opts = i.options || {}; const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0); return sum + (i.price + extra) * i.quantity; }, 0) + coreOption;
+  const coreOption = document.getElementById('cartCoreOption')?.checked ? getOptionPrices().core : 0;
+  return cart.reduce((sum, i) => sum + (i.price + getItemExtra(i)) * i.quantity, 0) + coreOption;
 }
 
 // Réduction apportée par le code promo pour un sous-total donné
@@ -787,8 +809,8 @@ function renderCartItems() {
   if (totalEl) totalEl.textContent = formatPrice(total);
   container.innerHTML = cart.map(item => {
     const opts = item.options || {};
-    const extraPrice = (opts.debadgage?10:0)+(opts.retexture?5:0);
-    const totalItem  = (item.price+extraPrice)*item.quantity;
+    const prices     = getOptionPrices();
+    const totalItem  = (item.price + getItemExtra(item)) * item.quantity;
     const imgHTML = isYoutube(item.image)
       ? `<img src="https://img.youtube.com/vi/${getYoutubeId(item.image)}/mqdefault.jpg" class="cart-item-img" onerror="this.style.display='none'">`
       : item.image ? `<img src="${escapeHtml(item.image)}" class="cart-item-img" onerror="this.style.display='none'">` : `<div class="cart-item-img" style="display:flex;align-items:center;justify-content:center;font-size:1.2rem">📦</div>`;
@@ -799,8 +821,8 @@ function renderCartItems() {
         <button class="cart-item-remove" onclick="removeFromCart('${item.id}')">🗑️</button>
       </div>
       <div class="cart-item-options">
-        <label class="cart-option"><input type="checkbox" ${opts.debadgage?'checked':''} onchange="toggleOption('${item.id}','debadgage')"><span>🔧 Debadgage <em>+10€</em></span></label>
-        <label class="cart-option"><input type="checkbox" ${opts.retexture?'checked':''} onchange="toggleOption('${item.id}','retexture')"><span>🎨 Retexture <em>+5€</em></span></label>
+        <label class="cart-option"><input type="checkbox" ${opts.debadgage?'checked':''} onchange="toggleOption('${item.id}','debadgage')"><span>🔧 Debadgage <em>${formatOptionPrice(prices.debadgage)}</em></span></label>
+        <label class="cart-option"><input type="checkbox" ${opts.retexture?'checked':''} onchange="toggleOption('${item.id}','retexture')"><span>🎨 Retexture <em>${formatOptionPrice(prices.retexture)}</em></span></label>
       </div>
     </div>`;
   }).join('');
@@ -825,20 +847,22 @@ function openOrderModal() {
   const body    = document.getElementById('orderModalBody');
   if (!overlay || !body) return;
 
-  const coreChecked   = document.getElementById('cartCoreOption')?.checked ? 10 : 0;
+  const coreChecked   = document.getElementById('cartCoreOption')?.checked ? getOptionPrices().core : 0;
   const subtotal      = getCartSubtotal();
   const promoDiscount = getPromoDiscount(subtotal);
   const total         = subtotal - promoDiscount;
 
-  const itemLines = cart.map(item =>
-    `<div class="order-recap-item">
-       <span>${escapeHtml(item.name)} × ${item.quantity}</span>
-       <span>${formatPrice(item.price * item.quantity)}</span>
-     </div>`
-  ).join('');
+  const itemLines = cart.map(item => {
+    const opts    = item.options || {};
+    const optText = [opts.debadgage ? 'Debadgage' : '', opts.retexture ? 'Retexture' : ''].filter(Boolean).join(' + ');
+    return `<div class="order-recap-item">
+       <span>${escapeHtml(item.name)} × ${item.quantity}${optText ? `<br><small style="opacity:0.7">+ ${optText}</small>` : ''}</span>
+       <span>${formatPrice((item.price + getItemExtra(item)) * item.quantity)}</span>
+     </div>`;
+  }).join('');
 
   const coreLineHTML = (coreChecked
-    ? `<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(10)}</span></div>`
+    ? `<div class="order-recap-item"><span>📦 Ressource [CORE]</span><span>${formatPrice(coreChecked)}</span></div>`
     : '') + (promoDiscount > 0
     ? `<div class="order-recap-item" style="color:#4ade80"><span>🏷️ Code ${escapeHtml(appliedPromo.code)}</span><span>-${formatPrice(promoDiscount)}</span></div>`
     : '');
@@ -1091,7 +1115,7 @@ function sendVisitorPing() {
     visitorId: _visitorId,
     username:  userData?.connected ? userData.username : null,
     cart:      cart.map(i => ({ name: i.name, price: i.price })),
-    cartTotal: cart.reduce((s, i) => { const o = i.options||{}; return s + (i.price + (o.debadgage?10:0) + (o.retexture?5:0)) * i.quantity; }, 0)
+    cartTotal: cart.reduce((s, i) => s + (i.price + getItemExtra(i)) * i.quantity, 0)
   };
   fetch('/api/visitor/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), keepalive: true }).catch(() => {});
 }

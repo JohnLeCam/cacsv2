@@ -523,41 +523,11 @@ discordBot.on('messageCreate', async (message) => {
 
   // !close  (ou « !close force » pour supprimer même si le transcript échoue)
   const closeCmd = message.content.trim().toLowerCase();
-  if ((closeCmd === '!close' || closeCmd === '!close force') && message.channel.name?.startsWith('ticket-')) {
+  if ((closeCmd === '!close' || closeCmd === '!close force') && isTicketChannel(message.channel)) {
     const member  = message.member;
     const isStaff = STAFF_ROLE_IDS.some(roleId => member?.roles.cache.has(roleId));
     if (!isStaff) { await message.reply('❌ Seul un membre du staff peut fermer ce ticket.'); return; }
-    const channel = message.channel;
-    if (closingTickets.has(channel.id)) return; // fermeture déjà en cours
-    closingTickets.add(channel.id);
-    const force = closeCmd === '!close force';
-
-    try {
-      const cfg = await getTranscriptConfig();
-      if (cfg.transcript_enabled !== 'false') {
-        await channel.send('🔒 Fermeture du ticket… 📜 Création du transcript en cours, merci de patienter.');
-        try {
-          const r = await archiveTicket(channel, message.author);
-          const done = [r.saved ? 'panel admin' : null, r.sentToLog ? 'salon des transcripts' : null, r.sentToClient ? 'MP du client' : null].filter(Boolean).join(', ');
-          await channel.send(`✅ Transcript enregistré (${r.messageCount} messages → ${done}).${r.warnings.length ? `\n⚠️ ${r.warnings.join(' · ')}` : ''}`);
-          console.log(`📜 Transcript #${channel.name} : ${r.messageCount} messages → ${done}`);
-        } catch (err) {
-          console.error(`❌ Transcript #${channel.name} :`, err.message);
-          if (!force) {
-            await channel.send(`⚠️ **Le transcript n'a pas pu être créé** : ${err.message}\nLe salon n'est **pas** supprimé pour ne rien perdre. Tape \`!close force\` pour le supprimer quand même.`);
-            closingTickets.delete(channel.id);
-            return;
-          }
-          await channel.send('⚠️ Transcript impossible, suppression forcée demandée.');
-        }
-      }
-      await channel.send('🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
-      setTimeout(() => channel.delete().catch(() => {}).finally(() => closingTickets.delete(channel.id)), 5000);
-    } catch (err) {
-      closingTickets.delete(channel.id);
-      console.error('❌ Erreur !close :', err.message);
-      await channel.send('❌ Erreur pendant la fermeture : ' + err.message).catch(() => {});
-    }
+    await closeTicketChannel(message.channel, message.author, { force: closeCmd === '!close force' });
     return;
   }
 
@@ -614,7 +584,8 @@ function buildStatusEmbed(order, status) {
   const items      = Array.isArray(order.items) ? order.items : [];
   const itemLines  = items.map(item => {
     const opts  = item.options || {};
-    const extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0);
+    // Prix des options au moment de la commande (anciennes commandes : prix actuels)
+    const extra = Number.isFinite(item.optionsPrice) ? item.optionsPrice : optionExtra(opts, currentOptionPrices);
     const total = (parseFloat(item.price) + extra) * (item.quantity || 1);
     const optStr = [opts.debadgage ? 'Debadgage' : '', opts.retexture ? 'Retexture' : ''].filter(Boolean).join(', ');
     return `**${item.name}** — ${formatPrice(total)}${optStr ? ` *(${optStr})*` : ''}`;
@@ -1032,7 +1003,7 @@ async function archiveTicket(channel, closedByUser) {
 // elles ont droit à une limite plus haute, toutes les autres restent à 2 Mo.
 const jsonSmall = express.json({ limit: '2mb' });
 const jsonLarge = express.json({ limit: '12mb' });
-const LARGE_BODY_ROUTES = new Set(['/api/admin/upload-logo', '/api/admin/upload-embed-banner', '/api/admin/bot-avatar']);
+const LARGE_BODY_ROUTES = new Set(['/api/admin/upload-logo', '/api/admin/upload-embed-banner', '/api/admin/bot-avatar', '/api/admin/bot-banner']);
 app.use((req, res, next) => (LARGE_BODY_ROUTES.has(req.path) ? jsonLarge : jsonSmall)(req, res, next));
 app.set('trust proxy', 1);
 
@@ -1177,9 +1148,39 @@ async function getDiscordRoles() { const { data, error } = await supabase.from('
 
 function formatPrice(amount) { if (!amount || parseFloat(amount) <= 0) return 'Gratuit'; return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(amount || 0); }
 
+// ── 💶 Prix des options (modifiables dans le panel, une seule source pour tout le site) ──
+const OPTION_PRICE_DEFAULTS = { debadgage: 10, retexture: 5, core: 10 };
+const OPTION_PRICE_KEYS     = { debadgage: 'option_price_debadgage', retexture: 'option_price_retexture', core: 'option_price_core' };
+let currentOptionPrices = { ...OPTION_PRICE_DEFAULTS }; // copie en mémoire (utilisée par les embeds)
+let optionPricesTime    = 0;
+
+// Transforme les lignes de site_config en { debadgage, retexture, core } (valeurs sûres)
+function parseOptionPrices(site) {
+  const prices = { ...OPTION_PRICE_DEFAULTS };
+  for (const [name, key] of Object.entries(OPTION_PRICE_KEYS)) {
+    const n = parseFloat(String(site?.[key] ?? '').replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0 && n <= 1000) prices[name] = Math.round(n * 100) / 100;
+  }
+  return prices;
+}
+
+async function getOptionPrices(force = false) {
+  if (!force && Date.now() - optionPricesTime < 30 * 1000) return currentOptionPrices;
+  const { data, error } = await supabase.from('site_config').select('key, value').in('key', Object.values(OPTION_PRICE_KEYS));
+  if (error) throw error;
+  currentOptionPrices = parseOptionPrices(Object.fromEntries((data || []).map(r => [r.key, r.value])));
+  optionPricesTime = Date.now();
+  return currentOptionPrices;
+}
+
+// Supplément des options d'un article (prix unitaire)
+function optionExtra(opts, prices) {
+  return (opts?.debadgage ? prices.debadgage : 0) + (opts?.retexture ? prices.retexture : 0);
+}
+
 function formatData(site, categories, mods, promotions, discordRoles) {
   return {
-    site: { title: site.title || '', subtitle: site.subtitle || '', discordUrl: site.discordUrl || '', announcement: site.announcement || '', heroTagline: site.heroTagline || '', maintenance_mode: site.maintenance_mode || 'false', logo_url: site.logo_url || '', merge_orders: site.merge_orders ?? 'true' },
+    site: { title: site.title || '', subtitle: site.subtitle || '', discordUrl: site.discordUrl || '', announcement: site.announcement || '', heroTagline: site.heroTagline || '', maintenance_mode: site.maintenance_mode || 'false', logo_url: site.logo_url || '', merge_orders: site.merge_orders ?? 'true', optionPrices: parseOptionPrices(site) },
     categories,
     mods: mods.map(m => ({ id: m.id, name: m.name, category: m.category, description: m.description || '', image: m.image || '', images: Array.isArray(m.images) ? m.images : (typeof m.images === 'string' ? JSON.parse(m.images || '[]') : []), basePrice: parseFloat(m.base_price), featured: m.featured, visible: m.visible, position: m.position, createdAt: m.created_at || null })),
     promotions: promotions.map(p => ({ id: p.id, name: p.name, description: p.description || '', discountPercent: p.discount_percent, endDate: p.end_date, applyToCategories: p.apply_to_categories || [], active: p.active, color: p.color })),
@@ -1556,21 +1557,76 @@ app.post('/api/admin/discord-announce', requireAdmin, async (req, res) => {
 // ── 🤖 Logo (avatar) du bot Discord ──────────────────────────
 const BOT_AVATAR_MAX = 8 * 1024 * 1024; // 8 Mo
 
-function botProfile() {
+async function botProfile() {
   if (!discordBot.isReady()) return { ready: false };
-  return { ready: true, username: discordBot.user.username, avatarUrl: discordBot.user.displayAvatarURL({ extension: 'png', size: 256 }) };
+  // fetch(true) = redemande à Discord (la bannière n'est pas toujours connue en cache)
+  const u = await discordBot.user.fetch(true).catch(() => discordBot.user);
+  return {
+    ready:     true,
+    username:  u.username,
+    avatarUrl: u.displayAvatarURL({ extension: 'png', size: 256 }),
+    bannerUrl: u.banner ? u.bannerURL({ extension: 'png', size: 1024 }) : null,
+  };
 }
 
-// Message clair pour les erreurs Discord les plus courantes
+// Message clair pour les erreurs Discord les plus courantes (avatar, bannière, pseudo)
 function botAvatarError(err) {
   const msg = String(err?.message || err);
   if (/too fast|rate limit/i.test(msg) || err?.status === 429)
-    return "Discord limite les changements d'avatar (environ 2 par heure). Réessaie un peu plus tard.";
-  if (/AVATAR|image|Invalid Form Body/i.test(msg)) return "Discord a refusé l'image (format ou taille invalide). Essaie un PNG carré de moins de 8 Mo.";
+    return 'Discord limite ce changement (environ 2 par heure). Réessaie un peu plus tard.';
+  if (/USERNAME|username/i.test(msg)) return "Discord a refusé ce pseudo (déjà trop utilisé, interdit, ou changé trop souvent). Essaie-en un autre plus tard.";
+  if (/AVATAR|BANNER|image|Invalid Form Body/i.test(msg)) return "Discord a refusé l'image (format ou taille invalide). Essaie un PNG ou JPG de moins de 8 Mo.";
   return msg;
 }
 
-app.get('/api/admin/bot-profile', requireAdmin, (req, res) => res.json(botProfile()));
+// Lit une image envoyée par le panel (data:image/...;base64,...) → Buffer, ou { error }
+function decodeImage(imageBase64, maxBytes) {
+  const matches = String(imageBase64 || '').match(/^data:image\/(?:png|jpeg|gif|webp);base64,(.+)$/);
+  if (!matches) return { error: 'Format invalide (PNG, JPG, GIF ou WEBP uniquement).' };
+  const buffer = Buffer.from(matches[1], 'base64');
+  if (!buffer.length) return { error: 'Image vide.' };
+  if (buffer.length > maxBytes) return { error: `Image trop lourde (${Math.round(maxBytes / 1024 / 1024)} Mo max).` };
+  return { buffer };
+}
+
+app.get('/api/admin/bot-profile', requireAdmin, async (req, res) => res.json(await botProfile()));
+
+// Changer le pseudo du bot
+app.post('/api/admin/bot-username', requireAdmin, async (req, res) => {
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté." });
+  const username = String(req.body?.username ?? '').trim();
+  if (username.length < 2 || username.length > 32) return res.status(400).json({ error: 'Le pseudo doit faire entre 2 et 32 caractères.' });
+  if (/[@#:]|```/.test(username)) return res.status(400).json({ error: 'Le pseudo ne peut pas contenir @, #, : ni ```.' });
+  if (/discord|^everyone$|^here$/i.test(username)) return res.status(400).json({ error: 'Discord interdit « discord », « everyone » et « here » dans un pseudo.' });
+  if (username === discordBot.user.username) return res.status(400).json({ error: 'C\'est déjà le pseudo actuel du bot.' });
+  try {
+    await discordBot.user.setUsername(username);
+    console.log(`🤖 Pseudo du bot → ${username} (par ${req.session.user?.username})`);
+    res.json({ success: true, ...(await botProfile()) });
+  } catch (err) {
+    console.warn('⚠️  Changement pseudo bot :', err.message);
+    res.status(400).json({ error: botAvatarError(err) });
+  }
+});
+
+// Changer la bannière du bot : { imageBase64 } ou { remove: true }
+app.post('/api/admin/bot-banner', requireAdmin, async (req, res) => {
+  if (!discordBot.isReady()) return res.status(503).json({ error: "Le bot Discord n'est pas encore connecté." });
+  try {
+    let banner = null;
+    if (req.body?.remove !== true) {
+      const img = decodeImage(req.body?.imageBase64, BOT_AVATAR_MAX);
+      if (img.error) return res.status(400).json({ error: img.error });
+      banner = img.buffer;
+    }
+    await discordBot.user.setBanner(banner);
+    console.log(`🤖 Bannière du bot ${banner ? 'mise à jour' : 'retirée'} (par ${req.session.user?.username})`);
+    res.json({ success: true, ...(await botProfile()) });
+  } catch (err) {
+    console.warn('⚠️  Changement bannière bot :', err.message);
+    res.status(400).json({ error: botAvatarError(err) });
+  }
+});
 
 // Change l'avatar du bot : { imageBase64 } (fichier choisi) ou { useSiteLogo: true } (reprend le logo du site)
 app.post('/api/admin/bot-avatar', requireAdmin, async (req, res) => {
@@ -1585,16 +1641,16 @@ app.post('/api/admin/bot-avatar', requireAdmin, async (req, res) => {
       if (!imgRes.ok) return res.status(400).json({ error: `Impossible de télécharger le logo du site (HTTP ${imgRes.status}).` });
       buffer = await imgRes.buffer();
     } else {
-      const matches = String(req.body?.imageBase64 || '').match(/^data:image\/(?:png|jpeg|gif|webp);base64,(.+)$/);
-      if (!matches) return res.status(400).json({ error: 'Format invalide (PNG, JPG, GIF ou WEBP uniquement).' });
-      buffer = Buffer.from(matches[1], 'base64');
+      const img = decodeImage(req.body?.imageBase64, BOT_AVATAR_MAX);
+      if (img.error) return res.status(400).json({ error: img.error });
+      buffer = img.buffer;
     }
     if (!buffer?.length) return res.status(400).json({ error: 'Image vide.' });
     if (buffer.length > BOT_AVATAR_MAX) return res.status(400).json({ error: 'Image trop lourde (8 Mo max).' });
 
     await discordBot.user.setAvatar(buffer);
     console.log(`🤖 Avatar du bot mis à jour par ${req.session.user?.username}`);
-    res.json({ success: true, ...botProfile() });
+    res.json({ success: true, ...(await botProfile()) });
   } catch (err) {
     console.warn('⚠️  Changement avatar bot :', err.message);
     res.status(400).json({ error: botAvatarError(err) });
@@ -1679,6 +1735,239 @@ app.post('/api/admin/welcome-test', requireAdmin, async (req, res) => {
     if (err.code === 50007) return res.status(400).json({ error: "Impossible de t'envoyer un MP : autorise les messages privés des membres du serveur dans tes paramètres Discord." });
     res.status(500).json({ error: err.message });
   }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  🎫 PERSONNALISATION DES TICKETS + FERMETURE AUTOMATIQUE
+// ══════════════════════════════════════════════════════════════
+const TICKET_TOPIC_MARK = '🎫';
+const TICKET_DEFAULTS = {
+  ticket_name_template:  'ticket-{pseudo}-{id}',
+  ticket_open_template:  "# 🛒 Nouvelle commande — {date}\n\n**Client :** {client}\n{total}\n\n## 📦 Articles commandés\n{articles}\n\n## 👷 Staff notifié\n{staff}\n\n---\n*Pour fermer ce ticket : tapez* `!close`",
+  autoclose_enabled:     'false',
+  autoclose_remind_days: '3',
+  autoclose_close_days:  '2',
+};
+const TICKET_KEYS = Object.keys(TICKET_DEFAULTS);
+
+async function getTicketConfig() {
+  const cfg = { ...TICKET_DEFAULTS };
+  try {
+    const { data, error } = await supabase.from('site_config').select('key, value').in('key', TICKET_KEYS);
+    if (error) throw error;
+    for (const row of data || []) { const v = row.value == null ? '' : String(row.value); if (v !== '') cfg[row.key] = v; }
+  } catch (e) { console.warn('⚠️  Lecture config tickets impossible :', e.message); }
+  return cfg;
+}
+
+// Un salon est un ticket boutique s'il est dans la catégorie des tickets ET (nom « ticket-… » ou sujet marqué)
+function isTicketChannel(ch) {
+  if (!ch || ch.parentId !== TICKET_CAT_ID || !ch.isTextBased?.()) return false;
+  return ch.name?.startsWith('ticket-') || ch.topic?.startsWith(TICKET_TOPIC_MARK) || ch.topic?.startsWith('Commande de ');
+}
+
+// Discord n'accepte que certains caractères dans un nom de salon
+function sanitizeChannelName(name) {
+  const clean = String(name || '').toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[#@:,.!?'"`/\\()[\]{}<>|~^*+=$%&;]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 100);
+  return clean || 'ticket-client';
+}
+
+function buildTicketName(template, { username, numero }) {
+  const now = new Date();
+  const vars = {
+    pseudo: String(username || '').toLowerCase().replace(/[^a-z0-9]/g, '') || 'client',
+    numero: numero ?? '',
+    id:     Date.now().toString().slice(-5),
+    date:   `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+  };
+  return sanitizeChannelName(String(template || TICKET_DEFAULTS.ticket_name_template).replace(/\{(pseudo|numero|id|date)\}/gi, (_, k) => vars[k.toLowerCase()]));
+}
+
+// Compteur de tickets (pour {numero}) stocké dans site_config
+async function nextTicketNumber() {
+  try {
+    const { data } = await supabase.from('site_config').select('value').eq('key', 'ticket_counter').maybeSingle();
+    const next = (parseInt(data?.value, 10) || 0) + 1;
+    await supabase.from('site_config').upsert({ key: 'ticket_counter', value: String(next) }, { onConflict: 'key' });
+    return next;
+  } catch (e) { console.warn('⚠️  Compteur de tickets indisponible :', e.message); return Date.now().toString().slice(-5); }
+}
+
+function fillTicketTemplate(template, vars) {
+  return String(template || TICKET_DEFAULTS.ticket_open_template)
+    .replace(/\{(client|pseudo|date|total|articles|staff|numero|salon)\}/gi, (_, k) => String(vars[k.toLowerCase()] ?? ''));
+}
+
+// Envoie un texte en plusieurs messages si besoin (Discord : 2000 caractères max par message)
+async function sendLongMessage(channel, text) {
+  const parts = [];
+  let current = '';
+  for (const line of String(text).split('\n')) {
+    // une ligne trop longue est découpée en morceaux de 1990 caractères
+    const pieces = line.length > 1990 ? line.match(/[\s\S]{1,1990}/g) : [line];
+    for (const piece of pieces) {
+      if ((current + '\n' + piece).length > 1990) { if (current) parts.push(current); current = piece; }
+      else current = current ? current + '\n' + piece : piece;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  for (const part of parts) await channel.send(part);
+}
+
+// Fermeture d'un ticket (utilisée par !close ET par la fermeture automatique)
+async function closeTicketChannel(channel, closedByUser, { force = false, auto = false } = {}) {
+  if (closingTickets.has(channel.id)) return false; // fermeture déjà en cours
+  closingTickets.add(channel.id);
+  try {
+    const cfg = await getTranscriptConfig();
+    if (cfg.transcript_enabled !== 'false') {
+      await channel.send('🔒 Fermeture du ticket… 📜 Création du transcript en cours, merci de patienter.');
+      try {
+        const r = await archiveTicket(channel, closedByUser);
+        const done = [r.saved ? 'panel admin' : null, r.sentToLog ? 'salon des transcripts' : null, r.sentToClient ? 'MP du client' : null].filter(Boolean).join(', ');
+        await channel.send(`✅ Transcript enregistré (${r.messageCount} messages → ${done}).${r.warnings.length ? `\n⚠️ ${r.warnings.join(' · ')}` : ''}`);
+        console.log(`📜 Transcript #${channel.name} : ${r.messageCount} messages → ${done}`);
+      } catch (err) {
+        console.error(`❌ Transcript #${channel.name} :`, err.message);
+        if (!force) {
+          await channel.send(`⚠️ **Le transcript n'a pas pu être créé** : ${err.message}\nLe salon n'est **pas** supprimé pour ne rien perdre.${auto ? '' : ' Tape `!close force` pour le supprimer quand même.'}`);
+          closingTickets.delete(channel.id);
+          return false;
+        }
+        await channel.send('⚠️ Transcript impossible, suppression forcée demandée.');
+      }
+    }
+    await channel.send(auto
+      ? '🔒 Ticket fermé automatiquement (aucune activité). Ce salon sera supprimé dans 5 secondes.'
+      : '🔒 Ticket fermé par le staff. Ce salon sera supprimé dans 5 secondes.');
+    setTimeout(() => channel.delete().catch(() => {}).finally(() => closingTickets.delete(channel.id)), 5000);
+    return true;
+  } catch (err) {
+    closingTickets.delete(channel.id);
+    console.error('❌ Erreur fermeture ticket :', err.message);
+    await channel.send('❌ Erreur pendant la fermeture : ' + err.message).catch(() => {});
+    return false;
+  }
+}
+
+// ── Fermeture automatique des tickets inactifs ──
+const AUTOCLOSE_FOOTER   = '⏰ Fermeture automatique des tickets inactifs';
+const AUTOCLOSE_INTERVAL = 30 * 60 * 1000; // vérification toutes les 30 minutes
+const DAY_MS             = 24 * 60 * 60 * 1000;
+let autoCloseRunning = false;
+
+function ticketClientId(channel) {
+  const ow = channel.permissionOverwrites?.cache.find(o => o.type === 1 && o.id !== discordBot.user?.id);
+  return ow?.id || null;
+}
+
+function parseDays(value, fallback) {
+  const n = parseFloat(String(value).replace(',', '.'));
+  return Number.isFinite(n) && n >= 0.5 && n <= 60 ? n : fallback;
+}
+
+async function runAutoClose() {
+  if (autoCloseRunning || !discordBot.isReady()) return;
+  autoCloseRunning = true;
+  try {
+    const cfg = await getTicketConfig();
+    if (cfg.autoclose_enabled !== 'true') return;
+    const remindDays = parseDays(cfg.autoclose_remind_days, 3);
+    const closeDays  = parseDays(cfg.autoclose_close_days, 2);
+    const guild = discordBot.guilds.cache.get(config.GUILD_ID) || discordBot.guilds.cache.first();
+    if (!guild) return;
+
+    for (const channel of guild.channels.cache.filter(isTicketChannel).values()) {
+      if (closingTickets.has(channel.id)) continue;
+      try {
+        const last = (await channel.messages.fetch({ limit: 1 })).first();
+        const age  = Date.now() - (last ? last.createdTimestamp : channel.createdTimestamp);
+        const lastIsReminder = last && last.author.id === discordBot.user.id && last.embeds[0]?.footer?.text === AUTOCLOSE_FOOTER;
+
+        if (lastIsReminder) {
+          // Personne n'a répondu au rappel → fermeture (avec transcript)
+          if (age >= closeDays * DAY_MS) {
+            console.log(`⏰ Fermeture auto de #${channel.name} (inactif)`);
+            await closeTicketChannel(channel, discordBot.user, { auto: true });
+          }
+        } else if (age >= remindDays * DAY_MS) {
+          const clientId = ticketClientId(channel);
+          const embed = new EmbedBuilder()
+            .setColor(0xf59e0b)
+            .setTitle('⏰ Ticket inactif')
+            .setDescription(`${clientId ? `<@${clientId}>, ce` : 'Ce'} ticket n'a reçu aucun message depuis **${remindDays} jour${remindDays > 1 ? 's' : ''}**.\n\nSans nouveau message d'ici **${closeDays} jour${closeDays > 1 ? 's' : ''}**, il sera **fermé automatiquement** (l'historique est conservé).\n\nBesoin de quelque chose ? Écris simplement un message ici 🙂`)
+            .setFooter({ text: AUTOCLOSE_FOOTER })
+            .setTimestamp();
+          await channel.send({ content: clientId ? `<@${clientId}>` : undefined, embeds: [embed], allowedMentions: { users: clientId ? [clientId] : [] } });
+          console.log(`⏰ Rappel d'inactivité envoyé dans #${channel.name}`);
+        }
+      } catch (e) { console.warn(`⚠️  Fermeture auto #${channel.name} :`, e.message); }
+      await new Promise(r => setTimeout(r, 1500)); // ménage l'API Discord
+    }
+  } catch (e) {
+    console.warn('⚠️  Fermeture auto des tickets :', e.message);
+  } finally {
+    autoCloseRunning = false;
+  }
+}
+setInterval(runAutoClose, AUTOCLOSE_INTERVAL);
+setTimeout(runAutoClose, 2 * 60 * 1000); // premier passage 2 min après le démarrage
+
+// ── Routes du panel : tickets ──
+app.get('/api/admin/ticket-config', requireAdmin, async (req, res) => {
+  res.json({ config: await getTicketConfig(), defaults: TICKET_DEFAULTS });
+});
+
+app.post('/api/admin/ticket-config', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const nameTpl = String(b.nameTemplate ?? '').trim();
+  const openTpl = String(b.openTemplate ?? '').trim();
+  const remind  = parseFloat(String(b.remindDays ?? '').replace(',', '.'));
+  const close   = parseFloat(String(b.closeDays ?? '').replace(',', '.'));
+  if (!nameTpl || nameTpl.length > 80) return res.status(400).json({ error: 'Le format du nom de salon est obligatoire (80 caractères max).' });
+  if (!/\{(pseudo|numero|id)\}/i.test(nameTpl)) return res.status(400).json({ error: 'Le nom de salon doit contenir {pseudo}, {numero} ou {id} pour que chaque ticket ait un nom différent.' });
+  if (!openTpl) return res.status(400).json({ error: "Le message d'ouverture est obligatoire." });
+  if (openTpl.length > 4000) return res.status(400).json({ error: "Message d'ouverture trop long (4000 caractères max)." });
+  if (!(remind >= 0.5 && remind <= 60)) return res.status(400).json({ error: 'Délai avant rappel invalide (entre 0,5 et 60 jours).' });
+  if (!(close >= 0.5 && close <= 60))   return res.status(400).json({ error: 'Délai avant fermeture invalide (entre 0,5 et 60 jours).' });
+  try {
+    const rows = [
+      { key: 'ticket_name_template',  value: nameTpl },
+      { key: 'ticket_open_template',  value: openTpl },
+      { key: 'autoclose_enabled',     value: b.autoCloseEnabled === true ? 'true' : 'false' },
+      { key: 'autoclose_remind_days', value: String(remind) },
+      { key: 'autoclose_close_days',  value: String(close) },
+    ];
+    const { error } = await supabase.from('site_config').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
+    res.json({ success: true, config: await getTicketConfig(), exampleName: buildTicketName(nameTpl, { username: req.session.user?.username, numero: 42 }) });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
+});
+
+// ── Routes du panel : prix des options ──
+app.get('/api/admin/option-prices', requireAdmin, async (req, res) => {
+  try { res.json({ prices: await getOptionPrices(true), defaults: OPTION_PRICE_DEFAULTS }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/admin/option-prices', requireAdmin, async (req, res) => {
+  const rows = [];
+  for (const [name, key] of Object.entries(OPTION_PRICE_KEYS)) {
+    const n = parseFloat(String(req.body?.[name] ?? '').replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 1000) return res.status(400).json({ error: `Prix invalide pour « ${name} » (entre 0 et 1000 €).` });
+    rows.push({ key, value: String(Math.round(n * 100) / 100) });
+  }
+  try {
+    const { error } = await supabase.from('site_config').upsert(rows, { onConflict: 'key' });
+    if (error) throw error;
+    invalidatePublicCache(); // le site affiche les nouveaux prix tout de suite
+    res.json({ success: true, prices: await getOptionPrices(true) });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
 });
 
 // ── 📜 Transcripts (panel admin) ─────────────────────────────
@@ -1815,7 +2104,7 @@ async function getUserRoleDiscount(user) {
 
 // Vérifie le panier et calcule le sous-total (promos de catégorie + réduction de rôle + options)
 async function computeCart(items, coreOption, user) {
-  const [dbMods, activePromos, roleDiscount] = await Promise.all([getMods(true), getPromotions(true), getUserRoleDiscount(user)]);
+  const [dbMods, activePromos, roleDiscount, prices] = await Promise.all([getMods(true), getPromotions(true), getUserRoleDiscount(user), getOptionPrices()]);
   let subtotal = 0; const validatedItems = [];
   for (const item of items) {
     const dbMod = dbMods.find(m => m.id === item.id);
@@ -1824,12 +2113,12 @@ async function computeCart(items, coreOption, user) {
     for (const p of activePromos) { if (!p.apply_to_categories?.length || p.apply_to_categories.includes(dbMod.category)) { if (p.discount_percent > promoDiscount) promoDiscount = p.discount_percent; } }
     const totalDiscount = Math.min(roleDiscount + promoDiscount, 100);
     const serverPrice = parseFloat(dbMod.base_price) * (1 - totalDiscount / 100);
-    const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), qty = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
+    const opts = item.options || {}, extra = optionExtra(opts, prices), qty = Math.max(1, Math.min(10, parseInt(item.quantity) || 1));
     subtotal += (serverPrice + extra) * qty;
-    validatedItems.push({ id: dbMod.id, name: dbMod.name, price: serverPrice, quantity: qty, options: { debadgage: !!opts.debadgage, retexture: !!opts.retexture } });
+    validatedItems.push({ id: dbMod.id, name: dbMod.name, price: serverPrice, quantity: qty, options: { debadgage: !!opts.debadgage, retexture: !!opts.retexture }, optionsPrice: extra });
   }
-  if (coreOption) subtotal += 10;
-  return { validatedItems, subtotal: round2(subtotal), roleDiscount };
+  if (coreOption) subtotal += prices.core;
+  return { validatedItems, subtotal: round2(subtotal), roleDiscount, prices };
 }
 
 // Vérifie un code promo pour un client et un sous-total donnés (ne consomme PAS le code)
@@ -1931,9 +2220,7 @@ async function isMergeOrdersEnabled() {
 // est supprimé, donc il ne sera jamais retrouvé.
 function findOpenTicketChannel(guild, discordId) {
   const tickets = guild.channels.cache.filter(ch =>
-    ch.parentId === TICKET_CAT_ID &&
-    ch.name?.startsWith('ticket-') &&
-    ch.isTextBased?.() &&
+    isTicketChannel(ch) &&
     ch.permissionOverwrites?.cache.get(discordId)?.type === 1 // 1 = permission d'un membre (pas d'un rôle)
   );
   if (!tickets.size) return null;
@@ -1979,8 +2266,8 @@ app.post('/api/order', async (req, res) => {
   for (const item of items) { if (!item.id || typeof item.id !== 'string') return res.status(400).json({ error: 'Article invalide (id manquant).' }); if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' }); }
   const coreOption = req.body.coreOption === true;
   const promoCodeInput = req.body.promoCode ? normalizePromoCode(req.body.promoCode) : '';
-  let validatedItems, subtotal;
-  try { ({ validatedItems, subtotal } = await computeCart(items, coreOption, sessionUser)); }
+  let validatedItems, subtotal, prices;
+  try { ({ validatedItems, subtotal, prices } = await computeCart(items, coreOption, sessionUser)); }
   catch (e) { if (e.status) return res.status(e.status).json({ error: e.message }); return res.status(500).json({ error: 'Erreur lecture base de données.' }); }
 
   const discordId = String(sessionUser.id);
@@ -2015,8 +2302,13 @@ app.post('/api/order', async (req, res) => {
       let member = null;
       try { member = await guild.members.fetch(discordId); } catch (e) {}
 
-      const itemLines = validatedItems.map(item => { const opts = item.options || {}, extra = (opts.debadgage ? 10 : 0) + (opts.retexture ? 5 : 0), total = (item.price + extra) * item.quantity, optStr = [opts.debadgage ? '🔧 Debadgage (+10€)' : '', opts.retexture ? '🎨 Retexture (+5€)' : ''].filter(Boolean).join(', '); return `> 🔹 **${item.name}**${item.quantity > 1 ? ` ×${item.quantity}` : ''} — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`; }).join('\n');
-      const coreLines     = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(10)}**` : '';
+      const itemLines = validatedItems.map(item => {
+        const opts   = item.options || {};
+        const total  = (item.price + item.optionsPrice) * item.quantity;
+        const optStr = [opts.debadgage ? `🔧 Debadgage (+${formatPrice(prices.debadgage)})` : '', opts.retexture ? `🎨 Retexture (+${formatPrice(prices.retexture)})` : ''].filter(Boolean).join(', ');
+        return `> 🔹 **${item.name}**${item.quantity > 1 ? ` ×${item.quantity}` : ''} — **${formatPrice(total)}**${optStr ? `\n>    └ ${optStr}` : ''}`;
+      }).join('\n');
+      const coreLines     = coreOption ? `\n> 📦 **Ressource [CORE]** — **${formatPrice(prices.core)}**` : '';
       const staffMentions = STAFF_ROLE_IDS.map(id => `<@&${id}>`).join(' ');
       const clientMention = member ? `<@${member.id}>` : `**${username}**`;
       const today         = new Date().toLocaleDateString('fr-FR');
@@ -2033,14 +2325,19 @@ app.post('/api/order', async (req, res) => {
         merged = true;
         await channel.send([`# ➕ Commande supplémentaire — ${today}`, ``, `**Client :** ${clientMention}`, ...totalLines, ``, `## 📦 Articles ajoutés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions].join('\n'));
       } else {
-        // 3. Sinon : nouveau ticket (comportement d'origine)
-        const timestamp  = Date.now().toString().slice(-5);
-        const ticketName = `ticket-${username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'client'}-${timestamp}`;
+        // 3. Sinon : nouveau ticket (nom et message d'ouverture réglables dans le panel)
+        const ticketCfg  = await getTicketConfig();
+        const numero     = /\{numero\}/i.test(ticketCfg.ticket_name_template) ? await nextTicketNumber() : null;
+        const ticketName = buildTicketName(ticketCfg.ticket_name_template, { username, numero });
         const permissionOverwrites = [{ id: guild.id, deny: [PermissionFlagsBits.ViewChannel] }];
         if (member) permissionOverwrites.push({ id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
         for (const roleId of STAFF_ROLE_IDS) permissionOverwrites.push({ id: roleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages] });
-        channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `Commande de ${username} — ${today}` });
-        await channel.send([`# 🛒 Nouvelle commande — ${today}`, ``, `**Client :** ${clientMention}`, ...totalLines, ``, `## 📦 Articles commandés`, itemLines + coreLines, ``, `## 👷 Staff notifié`, staffMentions, ``, `---`, `*Pour fermer ce ticket : tapez* \`!close\``].join('\n'));
+        channel = await guild.channels.create({ name: ticketName, type: ChannelType.GuildText, parent: TICKET_CAT_ID, permissionOverwrites, topic: `${TICKET_TOPIC_MARK} Commande de ${username} — ${today}` });
+        const openText = fillTicketTemplate(ticketCfg.ticket_open_template, {
+          client: clientMention, pseudo: username, date: today, total: totalLines.join('\n'),
+          articles: itemLines + coreLines, staff: staffMentions, numero: numero ?? '', salon: `<#${channel.id}>`,
+        });
+        await sendLongMessage(channel, openText);
 
         // Embed d'accueil : rappel partenariat / règlement / CGV (désactivable dans le panel)
         try {

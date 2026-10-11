@@ -489,6 +489,78 @@ alter table public.transcripts enable row level security;</div>
               </div>
             </div>
           </div>
+
+          <!-- PERSONNALISATION DES TICKETS -->
+          <div class="card">
+            <div class="card-header"><span class="card-title">🎫 Personnalisation des tickets</span></div>
+            <div class="card-body">
+
+              <!-- Nom du salon -->
+              <div class="form-group">
+                <label for="ticketNameTemplate">Nom des salons de tickets</label>
+                <input type="text" id="ticketNameTemplate" maxlength="80" oninput="renderTicketPreview()" placeholder="ticket-{pseudo}-{id}">
+                <div class="embed-chips">
+                  <span class="embed-help" style="margin:0;align-self:center">Insérer :</span>
+                  <button type="button" class="embed-chip" onclick="insertTicketVar('ticketNameTemplate','{pseudo}')" title="Pseudo du client (lettres et chiffres)">{pseudo}</button>
+                  <button type="button" class="embed-chip" onclick="insertTicketVar('ticketNameTemplate','{numero}')" title="Numéro qui augmente à chaque ticket : 1, 2, 3…">{numero}</button>
+                  <button type="button" class="embed-chip" onclick="insertTicketVar('ticketNameTemplate','{id}')" title="5 chiffres aléatoires">{id}</button>
+                  <button type="button" class="embed-chip" onclick="insertTicketVar('ticketNameTemplate','{date}')" title="Jour et mois : 11-10">{date}</button>
+                </div>
+                <div class="embed-help">Exemple de résultat : <strong id="ticketNamePreview" style="color:var(--white)">—</strong> · Discord met tout en minuscules et remplace les espaces par des tirets.</div>
+              </div>
+
+              <!-- Message d'ouverture -->
+              <div class="embed-editor" style="margin-top:18px">
+                <div class="embed-form">
+                  <div class="form-group">
+                    <label for="ticketOpenTemplate">Message d'ouverture du ticket <span class="embed-counter" id="ticketOpenCount">0/4000</span></label>
+                    <textarea id="ticketOpenTemplate" rows="14" maxlength="4000" oninput="renderTicketPreview()" style="font-family:var(--mono);font-size:0.8rem;line-height:1.5"></textarea>
+                    <div class="embed-chips">
+                      <span class="embed-help" style="margin:0;align-self:center">Insérer :</span>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{client}')" title="Mention du client">{client}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{pseudo}')" title="Pseudo du client (sans mention)">{pseudo}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{date}')" title="Date du jour">{date}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{total}')" title="Total (+ code promo et engagements)">{total}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{articles}')" title="Liste des articles et options">{articles}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{staff}')" title="Mention des rôles staff (ils sont notifiés)">{staff}</button>
+                      <button type="button" class="embed-chip" onclick="insertTicketVar('ticketOpenTemplate','{numero}')" title="Numéro du ticket (si {numero} est dans le nom du salon)">{numero}</button>
+                    </div>
+                    <div class="embed-help">⚠️ Sans <code>{staff}</code>, le staff n'est plus notifié · Sans <code>{articles}</code> / <code>{total}</code>, la commande n'apparaît plus dans le message. Titres : « # », « ## » en début de ligne.</div>
+                  </div>
+                </div>
+                <div style="position:sticky;top:20px">
+                  <div class="dc-wrap">
+                    <div class="dc-label">Aperçu (exemple de commande)</div>
+                    <div id="ticketOpenPreview"></div>
+                  </div>
+                </div>
+              </div>
+
+              <hr class="sep">
+
+              <!-- Fermeture automatique -->
+              <div class="maintenance-box" style="background:rgba(245,158,11,0.06);border-color:rgba(245,158,11,0.25);margin-bottom:14px">
+                <div class="maintenance-box-left">
+                  <div class="maintenance-box-title">Fermeture automatique des tickets inactifs</div>
+                  <div class="maintenance-box-desc">Le bot relance le client quand plus personne n'écrit, puis ferme le ticket (avec transcript) si personne ne répond. Vérification toutes les 30 minutes.</div>
+                </div>
+                <div class="maintenance-box-right">
+                  <div class="toggle-wrap" onclick="toggleAutoClose()"><button type="button" class="toggle" id="toggleAutoClose"></button></div>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-group"><label for="autoCloseRemindDays">Rappel après (jours sans message)</label><input type="number" id="autoCloseRemindDays" min="0.5" max="60" step="0.5" oninput="renderAutoCloseSummary()"></div>
+                <div class="form-group"><label for="autoCloseCloseDays">Fermeture après le rappel (jours)</label><input type="number" id="autoCloseCloseDays" min="0.5" max="60" step="0.5" oninput="renderAutoCloseSummary()"></div>
+              </div>
+              <div id="autoCloseSummary" class="embed-help" style="margin-top:4px"></div>
+
+              <div id="ticketConfigStatus" class="embed-status" style="margin-top:12px"></div>
+              <div class="embed-actions" style="margin-top:10px">
+                <button class="btn btn-ghost" onclick="resetTicketTemplates()">↺ Textes d'origine</button>
+                <button class="btn btn-red" id="btnSaveTicketConfig" onclick="saveTicketConfig()">💾 Enregistrer</button>
+              </div>
+            </div>
+          </div>
           <div class="card">
             <div class="card-header"><span class="card-title">Informations du site</span></div>
             <div class="card-body">
@@ -550,7 +622,7 @@ alter table public.transcripts enable row level security;</div>
           <div class="card" style="border-color:rgba(88,101,242,0.3)">
             <div class="card-header" style="background:rgba(88,101,242,0.05)">
               <span class="card-title" style="display:flex;align-items:center;gap:8px">
-                <span style="font-size:1.1rem">🤖</span> Logo du bot Discord
+                <span style="font-size:1.1rem">🤖</span> Profil du bot Discord (logo, pseudo, bannière)
               </span>
               <span id="botProfileName" style="font-family:var(--mono);font-size:0.75rem;color:var(--grey-m)">—</span>
             </div>
@@ -579,6 +651,62 @@ alter table public.transcripts enable row level security;</div>
                   </div>
                   <div id="botAvatarStatus" class="embed-status"></div>
                 </div>
+              </div>
+
+              <hr class="sep">
+
+              <!-- Pseudo -->
+              <div class="form-group">
+                <label for="botUsernameInput">Pseudo du bot</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <input type="text" id="botUsernameInput" maxlength="32" placeholder="Ex. Cac's Bot" style="flex:1;min-width:200px">
+                  <button class="btn btn-discord" id="btnSaveBotUsername" onclick="saveBotUsername()">✏️ Changer le pseudo</button>
+                </div>
+                <div class="embed-help">2 à 32 caractères · Interdits : @ # : ``` et le mot « discord » · Environ 2 changements par heure.</div>
+                <div id="botUsernameStatus" class="embed-status" style="margin-top:6px"></div>
+              </div>
+
+              <hr class="sep">
+
+              <!-- Bannière -->
+              <label>Bannière du profil (visible en cliquant sur le bot)</label>
+              <div id="botBannerPreview" style="width:100%;max-width:480px;aspect-ratio:3/1;border-radius:var(--r);background:var(--bg-2);border:2px dashed var(--border-b);display:flex;align-items:center;justify-content:center;overflow:hidden;margin:8px 0 12px;background-size:cover;background-position:center">
+                <span id="botBannerPlaceholder" style="font-size:0.8rem;color:var(--grey-m);font-family:var(--mono)">Aucune bannière</span>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+                <label for="botBannerInput" class="embed-file-btn">📂 Choisir une image</label>
+                <input type="file" id="botBannerInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none" onchange="previewBotBanner(this)">
+                <span id="botBannerFileName" style="font-size:0.78rem;color:var(--grey-m);font-family:var(--mono)">Aucun fichier</span>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-discord" id="btnUploadBotBanner" onclick="uploadBotBanner()" disabled>🚀 Mettre à jour la bannière</button>
+                <button class="btn btn-ghost" id="btnRemoveBotBanner" onclick="removeBotBanner()">🗑️ Retirer la bannière</button>
+              </div>
+              <div class="embed-help">Format paysage 600 × 240 px conseillé (ratio 5:2) · 8 Mo max · Environ 2 changements par heure.</div>
+              <div id="botBannerStatus" class="embed-status" style="margin-top:6px"></div>
+            </div>
+          </div>
+
+          <!-- PRIX DES OPTIONS -->
+          <div class="card" style="border-color:rgba(34,197,94,0.3)">
+            <div class="card-header" style="background:rgba(34,197,94,0.05)">
+              <span class="card-title" style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:1.1rem">💶</span> Prix des options
+              </span>
+            </div>
+            <div class="card-body">
+              <p style="color:var(--grey-m);font-size:0.82rem;margin-bottom:16px;line-height:1.6">
+                Utilisés partout : panier du site, total recalculé par le serveur, tickets Discord et embeds de statut.<br>
+                <span style="font-family:var(--mono);font-size:0.75rem">Les commandes déjà passées gardent le prix du moment où elles ont été faites · 0 = option offerte.</span>
+              </p>
+              <div class="form-grid">
+                <div class="form-group"><label for="priceDebadgage">🔧 Debadgage (€ par article)</label><input type="number" id="priceDebadgage" min="0" max="1000" step="0.01"></div>
+                <div class="form-group"><label for="priceRetexture">🎨 Retexture (€ par article)</label><input type="number" id="priceRetexture" min="0" max="1000" step="0.01"></div>
+                <div class="form-group"><label for="priceCore">📦 Ressource [CORE] (€ par commande)</label><input type="number" id="priceCore" min="0" max="1000" step="0.01"></div>
+              </div>
+              <div id="optionPricesStatus" class="embed-status" style="margin-top:10px"></div>
+              <div class="embed-actions" style="margin-top:10px">
+                <button class="btn btn-red" id="btnSaveOptionPrices" onclick="saveOptionPrices()">💾 Enregistrer les prix</button>
               </div>
             </div>
           </div>

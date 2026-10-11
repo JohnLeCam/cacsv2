@@ -25,6 +25,8 @@ async function loadAdminData() {
     loadTranscriptConfig(); // options des transcripts de tickets
     loadBotProfile();       // logo actuel du bot Discord
     loadWelcomeConfig();    // embed d'accueil des tickets
+    loadOptionPrices();     // prix des options (debadgage, retexture, core)
+    loadTicketConfig();     // nom des salons, message d'ouverture, fermeture auto
   } catch (e) { console.error('Erreur chargement admin:', e); showToast('Erreur lors du chargement des données', true); }
 }
 
@@ -1282,9 +1284,7 @@ async function loadBotProfile() {
       document.getElementById('botProfileName').textContent = '⏳ bot pas encore connecté';
       return;
     }
-    _botAvatarUrl = p.avatarUrl;
-    document.getElementById('botProfileName').textContent = '@' + p.username;
-    showBotAvatar(p.avatarUrl, 'Actuel');
+    applyBotProfile(p);
     renderEmbedLivePreview();
     renderWelcomeLivePreview();
   } catch (e) {
@@ -1315,7 +1315,7 @@ async function sendBotAvatar(payload, btn, busyText, idleText) {
     const res    = await fetch('/api/admin/bot-avatar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await readJsonSafe(res);
     if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
-    _botAvatarUrl = result.avatarUrl;
+    applyBotProfile(result);
     _botAvatarBase64 = null;
     document.getElementById('botAvatarInput').value = '';
     document.getElementById('botAvatarFileName').textContent = 'Aucun fichier';
@@ -1345,6 +1345,278 @@ function uploadBotAvatar() {
 function useSiteLogoForBot() {
   if (!confirm('Mettre le logo du site comme photo de profil du bot ?')) return;
   return sendBotAvatar({ useSiteLogo: true }, document.getElementById('btnBotUseSiteLogo'), '⏳ Envoi à Discord...', '🖼️ Utiliser le logo du site');
+}
+
+// Affiche le profil du bot renvoyé par le serveur (logo, pseudo, bannière)
+let _botBannerBase64 = null;
+function applyBotProfile(p) {
+  if (!p?.ready) return;
+  _botAvatarUrl = p.avatarUrl;
+  document.getElementById('botProfileName').textContent = '@' + p.username;
+  showBotAvatar(p.avatarUrl, 'Actuel');
+  const input = document.getElementById('botUsernameInput');
+  if (input && document.activeElement !== input) input.value = p.username;
+  if (!_botBannerBase64) showBotBanner(p.bannerUrl || '');
+}
+
+function showBotBanner(url) {
+  const box = document.getElementById('botBannerPreview');
+  const ph  = document.getElementById('botBannerPlaceholder');
+  if (!box) return;
+  box.style.backgroundImage = url ? `url("${url.replace(/"/g, '%22')}")` : 'none';
+  box.style.borderStyle     = url ? 'solid' : 'dashed';
+  ph.style.display          = url ? 'none' : 'inline';
+}
+
+async function saveBotUsername() {
+  const username = document.getElementById('botUsernameInput').value.trim();
+  if (username.length < 2 || username.length > 32) { setEmbedStatus('botUsernameStatus', '❌ Le pseudo doit faire entre 2 et 32 caractères.', 'error'); return; }
+  if (!confirm(`Renommer le bot en « ${username} » ?\n\nDiscord limite ce changement à environ 2 fois par heure.`)) return;
+  const btn = document.getElementById('btnSaveBotUsername');
+  btn.disabled = true; btn.textContent = '⏳ Envoi à Discord...';
+  try {
+    const res    = await fetch('/api/admin/bot-username', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    applyBotProfile(result);
+    setEmbedStatus('botUsernameStatus', `✅ Le bot s'appelle maintenant « ${result.username} ».`, 'ok');
+    showToast('Pseudo du bot mis à jour !');
+  } catch (e) {
+    setEmbedStatus('botUsernameStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '✏️ Changer le pseudo';
+  }
+}
+
+function previewBotBanner(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  if (!allowed.includes(file.type)) { showToast('Format non supporté (PNG, JPG, GIF ou WEBP)', true); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024)  { showToast('Image trop lourde (8 Mo max)', true); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _botBannerBase64 = e.target.result;
+    showBotBanner(_botBannerBase64);
+    document.getElementById('botBannerFileName').textContent = file.name;
+    document.getElementById('btnUploadBotBanner').disabled = false;
+    setEmbedStatus('botBannerStatus', 'ℹ️ Aperçu — clique sur « Mettre à jour la bannière » pour l\'appliquer sur Discord.', 'info');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendBotBanner(payload, btn, idleText) {
+  btn.disabled = true; btn.textContent = '⏳ Envoi à Discord...';
+  try {
+    const res    = await fetch('/api/admin/bot-banner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    _botBannerBase64 = null;
+    document.getElementById('botBannerInput').value = '';
+    document.getElementById('botBannerFileName').textContent = 'Aucun fichier';
+    applyBotProfile(result);
+    setEmbedStatus('botBannerStatus', payload.remove ? '✅ Bannière retirée.' : '✅ Bannière mise à jour sur Discord !', 'ok');
+    showToast(payload.remove ? 'Bannière retirée' : 'Bannière du bot mise à jour !');
+  } catch (e) {
+    setEmbedStatus('botBannerStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.textContent = idleText;
+    btn.disabled = btn.id === 'btnUploadBotBanner' ? !_botBannerBase64 : false;
+  }
+}
+
+function uploadBotBanner() {
+  if (!_botBannerBase64) return;
+  return sendBotBanner({ imageBase64: _botBannerBase64 }, document.getElementById('btnUploadBotBanner'), '🚀 Mettre à jour la bannière');
+}
+
+function removeBotBanner() {
+  if (!confirm('Retirer la bannière du bot ?')) return;
+  return sendBotBanner({ remove: true }, document.getElementById('btnRemoveBotBanner'), '🗑️ Retirer la bannière');
+}
+
+// ─── 💶 PRIX DES OPTIONS ─────────────────────────────────────
+async function loadOptionPrices() {
+  try {
+    const res    = await fetch('/api/admin/option-prices');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    document.getElementById('priceDebadgage').value = result.prices.debadgage;
+    document.getElementById('priceRetexture').value = result.prices.retexture;
+    document.getElementById('priceCore').value      = result.prices.core;
+  } catch (e) {
+    setEmbedStatus('optionPricesStatus', '❌ Impossible de charger les prix : ' + e.message, 'error');
+  }
+}
+
+async function saveOptionPrices() {
+  const read = id => parseFloat(String(document.getElementById(id).value).replace(',', '.'));
+  const prices = { debadgage: read('priceDebadgage'), retexture: read('priceRetexture'), core: read('priceCore') };
+  for (const [name, v] of Object.entries(prices)) {
+    if (!Number.isFinite(v) || v < 0 || v > 1000) { setEmbedStatus('optionPricesStatus', `❌ Prix invalide pour « ${name} » (entre 0 et 1000 €).`, 'error'); return; }
+  }
+  const btn = document.getElementById('btnSaveOptionPrices');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res    = await fetch('/api/admin/option-prices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(prices) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    const p = result.prices;
+    setEmbedStatus('optionPricesStatus', `✅ Prix enregistrés : Debadgage ${formatEUR(p.debadgage)} · Retexture ${formatEUR(p.retexture)} · [CORE] ${formatEUR(p.core)}. Le site est déjà à jour.`, 'ok');
+    showToast('Prix des options enregistrés !');
+  } catch (e) {
+    setEmbedStatus('optionPricesStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Enregistrer les prix';
+  }
+}
+
+// ─── 🎫 PERSONNALISATION DES TICKETS ─────────────────────────
+let _ticketDefaults = null;
+
+async function loadTicketConfig() {
+  try {
+    const res    = await fetch('/api/admin/ticket-config');
+    const result = await readJsonSafe(res);
+    if (!res.ok) throw new Error(result.error || 'Erreur inconnue');
+    _ticketDefaults = result.defaults;
+    fillTicketForm(result.config);
+  } catch (e) {
+    setEmbedStatus('ticketConfigStatus', '❌ Impossible de charger la config des tickets : ' + e.message, 'error');
+  }
+}
+
+function fillTicketForm(cfg) {
+  if (!document.getElementById('ticketNameTemplate')) return;
+  document.getElementById('ticketNameTemplate').value  = cfg.ticket_name_template || '';
+  document.getElementById('ticketOpenTemplate').value  = cfg.ticket_open_template || '';
+  document.getElementById('autoCloseRemindDays').value = cfg.autoclose_remind_days || '3';
+  document.getElementById('autoCloseCloseDays').value  = cfg.autoclose_close_days || '2';
+  setToggle('toggleAutoClose', cfg.autoclose_enabled === 'true');
+  renderTicketPreview();
+  renderAutoCloseSummary();
+}
+
+function insertTicketVar(fieldId, text) {
+  const el = document.getElementById(fieldId);
+  const start = el.selectionStart ?? el.value.length, end = el.selectionEnd ?? el.value.length;
+  el.value = el.value.slice(0, start) + text + el.value.slice(end);
+  el.focus(); el.selectionStart = el.selectionEnd = start + text.length;
+  renderTicketPreview();
+}
+
+// Même nettoyage que le serveur pour montrer le vrai nom du salon
+function previewTicketName(template) {
+  const now = new Date();
+  const vars = { pseudo: 'pseudoclient', numero: '42', id: '83679', date: `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}` };
+  const name = String(template || '').replace(/\{(pseudo|numero|id|date)\}/gi, (_, k) => vars[k.toLowerCase()])
+    .toLowerCase().replace(/\s+/g, '-').replace(/[#@:,.!?'"`/\\()[\]{}<>|~^*+=$%&;]/g, '').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '').slice(0, 100);
+  return name || 'ticket-client';
+}
+
+// Petit rendu Markdown Discord avec les titres (#, ##) pour l'aperçu du message d'ouverture
+function discordMessageToHTML(text) {
+  return String(text || '').split('\n').map(line => {
+    let m;
+    if ((m = line.match(/^(#{1,3}) (.+)$/))) {
+      const size = { 1: '1.35rem', 2: '1.15rem', 3: '1rem' }[m[1].length];
+      return `<div style="font-size:${size};font-weight:700;color:#fff;margin:6px 0 2px">${discordMarkdownToHTML(m[2])}</div>`;
+    }
+    if ((m = line.match(/^> ?(.*)$/))) return `<div style="border-left:4px solid #4e5058;padding-left:10px">${discordMarkdownToHTML(m[1]) || '&nbsp;'}</div>`;
+    if (line.trim() === '---') return '<div>---</div>';
+    return `<div>${discordMarkdownToHTML(line) || '&nbsp;'}</div>`;
+  }).join('');
+}
+
+function renderTicketPreview() {
+  const nameEl = document.getElementById('ticketNamePreview');
+  if (!nameEl) return;
+  nameEl.textContent = '#' + previewTicketName(document.getElementById('ticketNameTemplate').value);
+  updateEmbedCounter('ticketOpenTemplate', 'ticketOpenCount', 4000);
+
+  const prices = { debadgage: parseFloat(document.getElementById('priceDebadgage')?.value) || 10, core: parseFloat(document.getElementById('priceCore')?.value) || 10 };
+  const sample = {
+    client:   '<span class="dc-mention">@Client</span>',
+    pseudo:   'pseudoclient',
+    date:     new Date().toLocaleDateString('fr-FR'),
+    total:    `**Total :** **${formatEUR(29.99 + prices.debadgage + prices.core)}**\n**📋 Engagements :** ✅ Partenariat FiveM compris · ✅ Règlement accepté · ✅ CGV acceptées`,
+    articles: `> 🔹 **Mod de démonstration** — **${formatEUR(29.99 + prices.debadgage)}**\n>    └ 🔧 Debadgage (+${formatEUR(prices.debadgage)})\n> 📦 **Ressource [CORE]** — **${formatEUR(prices.core)}**`,
+    staff:    '<span class="dc-mention">@Staff</span>',
+    numero:   '42',
+    salon:    '#' + previewTicketName(document.getElementById('ticketNameTemplate').value),
+  };
+  // Les mentions sont insérées APRÈS le rendu Markdown (sinon elles seraient échappées)
+  const tokens = {};
+  const text = document.getElementById('ticketOpenTemplate').value.replace(/\{(client|pseudo|date|total|articles|staff|numero|salon)\}/gi, (_, k) => {
+    k = k.toLowerCase();
+    if (k === 'client' || k === 'staff') { const t = `§§${k}§§`; tokens[t] = sample[k]; return t; }
+    return sample[k];
+  });
+  let html = discordMessageToHTML(text);
+  for (const [t, v] of Object.entries(tokens)) html = html.split(t).join(v);
+  const avatar = _botAvatarUrl ? `<img src="${esc(_botAvatarUrl)}" alt="" onerror="this.remove()">` : 'C';
+  document.getElementById('ticketOpenPreview').innerHTML = `
+    <div class="dc-msg">
+      <div class="dc-avatar">${avatar}</div>
+      <div class="dc-content">
+        <div class="dc-head"><span class="dc-name">Cac's GTAV Mods</span><span class="dc-app">APP</span><span class="dc-time">Aujourd'hui</span></div>
+        <div class="dc-embed-desc" style="font-size:0.88rem">${html}</div>
+      </div>
+    </div>`;
+}
+
+function toggleAutoClose() {
+  setToggle('toggleAutoClose', !isToggleOn('toggleAutoClose'));
+  renderAutoCloseSummary();
+  setEmbedStatus('ticketConfigStatus', 'ℹ️ Modifié — pense à enregistrer.', 'info');
+}
+
+function renderAutoCloseSummary() {
+  const el = document.getElementById('autoCloseSummary');
+  if (!el) return;
+  if (!isToggleOn('toggleAutoClose')) { el.textContent = '🔕 Désactivée : les tickets restent ouverts tant que le staff ne tape pas !close.'; return; }
+  const r = parseFloat(document.getElementById('autoCloseRemindDays').value) || 0;
+  const c = parseFloat(document.getElementById('autoCloseCloseDays').value) || 0;
+  el.textContent = `✅ Après ${r} jour(s) sans aucun message → le bot relance le client. Toujours rien ${c} jour(s) plus tard → fermeture avec transcript (au total ${r + c} jours d'inactivité).`;
+}
+
+function resetTicketTemplates() {
+  if (!_ticketDefaults) return;
+  if (!confirm('Remettre le nom des salons et le message d\'ouverture d\'origine ?\n\n(Rien n\'est enregistré tant que tu ne cliques pas sur « Enregistrer ».)')) return;
+  document.getElementById('ticketNameTemplate').value = _ticketDefaults.ticket_name_template;
+  document.getElementById('ticketOpenTemplate').value = _ticketDefaults.ticket_open_template;
+  renderTicketPreview();
+  setEmbedStatus('ticketConfigStatus', 'ℹ️ Textes d\'origine remis — pense à enregistrer.', 'info');
+}
+
+async function saveTicketConfig() {
+  const body = {
+    nameTemplate:     document.getElementById('ticketNameTemplate').value.trim(),
+    openTemplate:     document.getElementById('ticketOpenTemplate').value.trim(),
+    autoCloseEnabled: isToggleOn('toggleAutoClose'),
+    remindDays:       document.getElementById('autoCloseRemindDays').value,
+    closeDays:        document.getElementById('autoCloseCloseDays').value,
+  };
+  if (!/\{(pseudo|numero|id)\}/i.test(body.nameTemplate)) { setEmbedStatus('ticketConfigStatus', '❌ Le nom de salon doit contenir {pseudo}, {numero} ou {id}.', 'error'); return; }
+  if (!body.openTemplate) { setEmbedStatus('ticketConfigStatus', '❌ Le message d\'ouverture est obligatoire.', 'error'); return; }
+  if (!/\{staff\}/i.test(body.openTemplate) && !confirm('Ton message ne contient pas {staff} : le staff ne sera plus notifié des nouveaux tickets.\n\nEnregistrer quand même ?')) return;
+  const btn = document.getElementById('btnSaveTicketConfig');
+  btn.disabled = true; btn.textContent = '⏳ Enregistrement...';
+  try {
+    const res    = await fetch('/api/admin/ticket-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const result = await readJsonSafe(res);
+    if (!res.ok || !result.success) throw new Error(result.error || 'Erreur inconnue');
+    setEmbedStatus('ticketConfigStatus', '✅ Tickets enregistrés ! Valable pour les prochains tickets.', 'ok');
+    showToast('Personnalisation des tickets enregistrée !');
+  } catch (e) {
+    setEmbedStatus('ticketConfigStatus', '❌ ' + e.message, 'error');
+    showToast('Erreur : ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Enregistrer';
+  }
 }
 
 // ─── 👋 EMBED D'ACCUEIL DES TICKETS ──────────────────────────
