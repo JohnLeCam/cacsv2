@@ -6,7 +6,7 @@ const helmet      = require('helmet');
 const rateLimit   = require('express-rate-limit');
 const compression = require('compression');
 const { createClient } = require('@supabase/supabase-js');
-const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, ChannelType, EmbedBuilder, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ActivityType } = require('discord.js');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -75,7 +75,10 @@ const discordBot = new Client({
 
 discordBot.once('clientReady', () => { // 'ready' est renommé en 'clientReady' depuis discord.js 14.22
   console.log(`🤖 Bot Discord connecté : ${discordBot.user.tag}`);
+  applyBotPresence(); // statut réglé dans le panel (Joue à…, Regarde…)
 });
+// Après une coupure réseau, Discord peut oublier le statut : on le remet
+discordBot.on('shardResume', () => applyBotPresence());
 
 // ══════════════════════════════════════════════════════════════
 //  !SITECHECK — COMMANDE DE DIAGNOSTIC COMPLÈTE
@@ -1588,6 +1591,65 @@ function decodeImage(imageBase64, maxBytes) {
   if (buffer.length > maxBytes) return { error: `Image trop lourde (${Math.round(maxBytes / 1024 / 1024)} Mo max).` };
   return { buffer };
 }
+
+// ── 🟢 Statut du bot (« Joue à… », « Regarde… », point de couleur) ──
+const BOT_STATUS_DEFAULTS = { bot_status_type: 'watching', bot_status_text: 'cacsgtavmods.fr', bot_status_online: 'online' };
+const BOT_ACTIVITY_TYPES  = {
+  playing:   ActivityType.Playing,    // Joue à …
+  watching:  ActivityType.Watching,   // Regarde …
+  listening: ActivityType.Listening,  // Écoute …
+  competing: ActivityType.Competing,  // Participe à …
+  custom:    ActivityType.Custom,     // texte libre (avec emoji)
+};
+const BOT_ONLINE_STATUSES = ['online', 'idle', 'dnd', 'invisible'];
+
+async function getBotStatusConfig() {
+  const cfg = { ...BOT_STATUS_DEFAULTS };
+  try {
+    const { data, error } = await supabase.from('site_config').select('key, value').in('key', Object.keys(BOT_STATUS_DEFAULTS));
+    if (error) throw error;
+    for (const row of data || []) if (row.value != null) cfg[row.key] = String(row.value);
+  } catch (e) { console.warn('⚠️  Lecture statut du bot impossible :', e.message); }
+  return cfg;
+}
+
+async function applyBotPresence(cfg) {
+  if (!discordBot.isReady()) return;
+  try {
+    cfg = cfg || await getBotStatusConfig();
+    const status = BOT_ONLINE_STATUSES.includes(cfg.bot_status_online) ? cfg.bot_status_online : 'online';
+    const text   = String(cfg.bot_status_text || '').trim().slice(0, 128);
+    const type   = BOT_ACTIVITY_TYPES[cfg.bot_status_type];
+    const activities = [];
+    if (text && type !== undefined) {
+      activities.push(type === ActivityType.Custom
+        ? { name: 'Custom Status', state: text, type }
+        : { name: text, type });
+    }
+    discordBot.user.setPresence({ status, activities });
+  } catch (e) { console.warn('⚠️  Application du statut du bot :', e.message); }
+}
+
+app.get('/api/admin/bot-status', requireAdmin, async (req, res) => {
+  res.json({ config: await getBotStatusConfig(), defaults: BOT_STATUS_DEFAULTS });
+});
+
+app.post('/api/admin/bot-status', requireAdmin, async (req, res) => {
+  const type   = String(req.body?.type ?? '');
+  const text   = String(req.body?.text ?? '').trim();
+  const online = String(req.body?.online ?? '');
+  if (type !== 'none' && !(type in BOT_ACTIVITY_TYPES)) return res.status(400).json({ error: "Type d'activité invalide." });
+  if (!BOT_ONLINE_STATUSES.includes(online))           return res.status(400).json({ error: 'Statut de connexion invalide.' });
+  if (type !== 'none' && !text)                        return res.status(400).json({ error: 'Écris un texte (ou choisis « Aucune activité »).' });
+  if (text.length > 128)                               return res.status(400).json({ error: 'Texte trop long (128 caractères max).' });
+  try {
+    const cfg = { bot_status_type: type, bot_status_text: text, bot_status_online: online };
+    const { error } = await supabase.from('site_config').upsert(Object.entries(cfg).map(([key, value]) => ({ key, value })), { onConflict: 'key' });
+    if (error) throw error;
+    await applyBotPresence(cfg);
+    res.json({ success: true, config: cfg, applied: discordBot.isReady() });
+  } catch (err) { res.status(500).json({ error: 'Erreur sauvegarde : ' + err.message }); }
+});
 
 app.get('/api/admin/bot-profile', requireAdmin, async (req, res) => res.json(await botProfile()));
 
