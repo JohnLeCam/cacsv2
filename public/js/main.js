@@ -896,22 +896,16 @@ function openOrderModal() {
         <button class="btn-ghost" onclick="closeOrderModal()">← Retour au panier</button>
       </div>`;
 
-  // ── CAS 2 : connecté → flux normal ────────────────────────
+  // ── CAS 2 : connecté → on vérifie d'abord qu'il est bien sur le Discord ──
   } else {
-    body.innerHTML = `
+    _orderRecapHTML = `
       <div class="order-recap">
         ${itemLines}${coreLineHTML}
         <div class="order-recap-total"><span>Total</span><span>${formatPrice(total)}</span></div>
-      </div>
-      <div class="order-info-box">
-        ✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>
-        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.<br>
-        <span style="opacity:0.75">Si tu as déjà un ticket ouvert, ta commande y sera ajoutée.</span>
-      </div>
-      <div class="order-modal-actions">
-        <button class="btn-ghost" onclick="closeOrderModal()">Annuler</button>
-        <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()">🎫 Valider la commande</button>
       </div>`;
+    body.innerHTML = _orderRecapHTML + `
+      <div class="order-info-box" style="text-align:center">⏳ Vérification de ta présence sur notre Discord…</div>`;
+    checkGuildThenRender();
   }
 
   // Fermer le panier et ouvrir la modale
@@ -923,19 +917,132 @@ function openOrderModal() {
   overlay.classList.add('open');
 }
 
+// ── Vérification « membre du Discord » avant de pouvoir valider ──
+let _orderRecapHTML = '';
+
+async function checkGuildThenRender() {
+  const body = document.getElementById('orderModalBody');
+  if (!body) return;
+  let status = null;
+  try {
+    const res = await fetch('/api/user/guild-status?fresh=1');
+    status = await res.json();
+  } catch { /* réseau : on laisse le serveur revérifier au moment de valider */ }
+
+  if (status && status.connected === false) { window.location.reload(); return; } // session expirée
+  if (status && status.inGuild === false) { renderNotInGuild(); return; }
+  renderOrderConfirm();
+}
+
+// Étape finale : rappels obligatoires (partenariat FiveM, règlement, CGV) puis bouton « Je valide »
+function renderOrderConfirm() {
+  const body = document.getElementById('orderModalBody');
+  if (!body) return;
+  const discordUrl = siteData?.site?.discordUrl || '';
+  const linkStyle  = 'color:#8b93ff;text-decoration:underline';
+  const reglementLink = discordUrl
+    ? `<a href="${escapeHtml(discordUrl)}" target="_blank" rel="noopener" style="${linkStyle}" onclick="event.stopPropagation()">règlement du serveur Discord</a>`
+    : 'règlement du serveur Discord';
+  const cgvLink = `<a href="/cgvu" target="_blank" rel="noopener" style="${linkStyle}" onclick="event.stopPropagation()">Conditions Générales de Vente et d'Utilisation (CGVU)</a>`;
+
+  const checkRow = (id, html) => `
+        <label for="${id}" style="display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;cursor:pointer;font-size:0.85rem;color:#ccc;line-height:1.5">
+          <input type="checkbox" id="${id}" class="order-accept" onchange="updateOrderAccept()" style="width:18px;height:18px;margin-top:2px;flex-shrink:0;accent-color:#5865F2;cursor:pointer">
+          <span>${html}</span>
+        </label>`;
+
+  body.innerHTML = _orderRecapHTML + `
+      <div class="order-info-box">
+        ✅ Connecté en tant que <strong>${escapeHtml(userData.username)}</strong><br>
+        Un ticket privé sera créé sur notre Discord avec toi et notre équipe.<br>
+        <span style="opacity:0.75">Si tu as déjà un ticket ouvert, ta commande y sera ajoutée.</span>
+      </div>
+
+      <!-- Rappel partenariat FiveM -->
+      <div style="margin:16px 0 12px;background:rgba(245,158,11,0.08);border:1.5px solid rgba(245,158,11,0.45);border-radius:8px;padding:16px 18px">
+        <div style="font-size:0.95rem;font-weight:700;color:#fbbf24;margin-bottom:6px">🤝 Partenariat obligatoire pour FiveM</div>
+        <div style="font-size:0.83rem;color:#ccc;line-height:1.55">
+          L'utilisation de nos assets sur un <strong style="color:#fff">serveur FiveM</strong> nécessite un <strong style="color:#fff">partenariat validé</strong> sur notre Discord officiel.<br>
+          Sans partenariat validé, toute utilisation ou diffusion est <strong style="color:#fff">interdite</strong>.
+        </div>
+      </div>
+
+      <!-- Engagements à cocher -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px">
+        ${checkRow('acceptPartner', "J'ai bien compris qu'un <strong style=\"color:#fff\">partenariat validé</strong> est nécessaire pour utiliser ces assets sur un serveur FiveM.")}
+        ${checkRow('acceptRules',   `J'ai lu et j'accepte le ${reglementLink}.`)}
+        ${checkRow('acceptCgv',     `J'ai lu et j'accepte les ${cgvLink}.`)}
+      </div>
+      <div id="orderAcceptHint" style="font-size:0.75rem;color:#888;text-align:center;margin:8px 0 0;font-family:var(--font-mono,monospace)">Coche les 3 cases pour pouvoir valider</div>
+
+      <div class="order-modal-actions">
+        <button class="btn-ghost" onclick="closeOrderModal()">Annuler</button>
+        <button class="btn-confirm" id="btnConfirmOrder" onclick="confirmOrder()" disabled>✅ Je valide</button>
+      </div>`;
+}
+
+// Active le bouton « Je valide » seulement quand les 3 cases sont cochées
+function areOrderTermsAccepted() {
+  const boxes = document.querySelectorAll('.order-accept');
+  return boxes.length === 3 && [...boxes].every(b => b.checked);
+}
+function updateOrderAccept() {
+  const ok   = areOrderTermsAccepted();
+  const btn  = document.getElementById('btnConfirmOrder');
+  const hint = document.getElementById('orderAcceptHint');
+  if (btn && !_orderSending) btn.disabled = !ok;
+  if (hint) {
+    hint.textContent = ok ? 'Tout est bon, tu peux valider ✅' : 'Coche les 3 cases pour pouvoir valider';
+    hint.style.color = ok ? '#4ade80' : '#888';
+  }
+}
+
+// Bloc affiché quand le client n'est pas (ou plus) sur le serveur Discord
+function renderNotInGuild() {
+  const body = document.getElementById('orderModalBody');
+  if (!body) return;
+  const inviteUrl = siteData?.site?.discordUrl || '';
+  const btnBase = 'display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 22px;border-radius:6px;font-weight:700;font-size:0.88rem;cursor:pointer;letter-spacing:0.04em;text-decoration:none;transition:opacity 0.2s';
+  body.innerHTML = _orderRecapHTML + `
+      <div style="margin:20px 0 6px;background:rgba(240,71,71,0.08);border:1.5px solid rgba(240,71,71,0.45);border-radius:8px;padding:22px 20px;text-align:center">
+        <div style="font-size:2rem;margin-bottom:10px">🚪</div>
+        <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px">Tu n'es pas sur notre serveur Discord</div>
+        <div style="font-size:0.83rem;color:#aaa;margin-bottom:18px;line-height:1.55">
+          Ta commande crée un ticket privé sur notre Discord.<br>
+          Tu dois en être membre pour pouvoir le voir et échanger avec notre équipe.
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;align-items:center">
+          ${inviteUrl ? `<a href="${escapeHtml(inviteUrl)}" target="_blank" rel="noopener" style="${btnBase};background:#5865F2;border:none;color:#fff">🔗 Rejoindre le Discord</a>` : ''}
+          <button onclick="loginDiscord()" style="${btnBase};background:${inviteUrl ? 'transparent' : '#5865F2'};border:1px solid #5865F2;color:#fff">🔄 Me reconnecter (ajout automatique au serveur)</button>
+          <button id="btnRecheckGuild" onclick="recheckGuild()" style="${btnBase};background:transparent;border:1px solid rgba(255,255,255,0.2);color:#ddd">✅ J'ai rejoint, vérifier à nouveau</button>
+        </div>
+        <div style="font-size:0.72rem;color:#666;margin-top:12px;font-family:var(--font-mono,monospace)">Ton panier est conservé</div>
+      </div>
+      <div class="order-modal-actions" style="margin-top:4px">
+        <button class="btn-ghost" onclick="closeOrderModal()">← Retour au panier</button>
+      </div>`;
+}
+
+async function recheckGuild() {
+  const btn = document.getElementById('btnRecheckGuild');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Vérification...'; }
+  await checkGuildThenRender();
+}
+
 function closeOrderModal() { const overlay = document.getElementById('orderModalOverlay'); if (overlay) overlay.classList.remove('open'); document.body.style.overflow = ''; }
 
 let _orderSending = false;
 async function confirmOrder() {
   if (_orderSending) return; // bloque les doubles clics
+  if (!areOrderTermsAccepted()) { updateOrderAccept(); return; } // les 3 engagements sont obligatoires
   _orderSending = true;
   const btn = document.getElementById('btnConfirmOrder');
-  const resetBtn = () => { _orderSending = false; if (btn) { btn.disabled = false; btn.textContent = '🎫 Valider la commande'; } };
+  const resetBtn = () => { _orderSending = false; if (btn) { btn.textContent = '✅ Je valide'; btn.disabled = !areOrderTermsAccepted(); } };
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi en cours...'; }
   try {
     const coreOption = document.getElementById('cartCoreOption')?.checked || false;
     // L'identité Discord est lue côté serveur (session) : on n'envoie que le panier
-    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, coreOption, promoCode: (appliedPromo && getPromoDiscount(getCartSubtotal()) > 0) ? appliedPromo.code : null }) });
+    const res = await fetch('/api/order', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ items:cart, coreOption, acceptedTerms: true, promoCode: (appliedPromo && getPromoDiscount(getCartSubtotal()) > 0) ? appliedPromo.code : null }) });
     let result = {};
     try { result = await res.json(); } catch { /* réponse non JSON */ }
     if (res.ok && result.success) {
@@ -948,6 +1055,12 @@ async function confirmOrder() {
       if (body) body.innerHTML = `<div class="order-success"><div class="success-icon">${result.merged ? '➕' : '🎫'}</div><h4>${title}</h4><p>${text}</p><div class="ticket-link">#${escapeHtml(result.ticketChannel)}</div></div><div style="margin-top:18px"><button onclick="closeOrderModal()" style="width:100%;background:var(--blue);border:none;color:#fff;padding:11px;border-radius:4px;font-weight:700;font-size:0.9rem;cursor:pointer;letter-spacing:0.06em">Fermer</button></div>`;
       _orderSending = false;
     } else {
+      if (result.notInGuild) {
+        // Le client a quitté le Discord entre-temps : on affiche le bloc « Rejoindre le Discord »
+        _orderSending = false;
+        renderNotInGuild();
+        return;
+      }
       if (result.promoError) {
         // Le code n'est plus valable : on le retire et on remet à jour le panier
         appliedPromo = null; savePromoState(); renderCartItems();

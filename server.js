@@ -73,7 +73,7 @@ const discordBot = new Client({
   ]
 });
 
-discordBot.once('ready', () => {
+discordBot.once('clientReady', () => { // 'ready' est renommé en 'clientReady' depuis discord.js 14.22
   console.log(`🤖 Bot Discord connecté : ${discordBot.user.tag}`);
 });
 
@@ -1240,6 +1240,38 @@ app.get('/api/public', async (req, res) => {
   } catch (err) { console.error('Erreur /api/public:', err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
+// ── Présence du client sur le serveur Discord ────────────────
+// Renvoie true (membre), false (pas membre / a quitté) ou null (vérification impossible pour l'instant)
+const guildCheckCache = new Map(); // userId → { inGuild, time }
+const GUILD_CHECK_TTL = 30 * 1000;
+async function checkGuildMembership(userId, { fresh = false } = {}) {
+  if (!userId) return false;
+  const cached = guildCheckCache.get(userId);
+  if (!fresh && cached && Date.now() - cached.time < GUILD_CHECK_TTL) return cached.inGuild;
+  if (!discordBot.isReady()) return null;
+  const guild = discordBot.guilds.cache.get(config.GUILD_ID) || discordBot.guilds.cache.first();
+  if (!guild) return null;
+  let inGuild;
+  try {
+    await guild.members.fetch({ user: userId, force: true }); // force = demande à Discord, pas au cache
+    inGuild = true;
+  } catch (e) {
+    if (e.code === 10007 || e.code === 10013) inGuild = false; // 10007 = membre inconnu, 10013 = utilisateur inconnu
+    else { console.warn(`⚠️  Vérification présence Discord impossible (${userId}) :`, e.message); return null; }
+  }
+  guildCheckCache.set(userId, { inGuild, time: Date.now() });
+  if (guildCheckCache.size > 5000) guildCheckCache.clear(); // évite que la mémoire grossisse sans fin
+  return inGuild;
+}
+
+// Le panier demande ici si le client est bien sur le Discord avant d'afficher « Valider la commande »
+app.get('/api/user/guild-status', async (req, res) => {
+  const user = req.session?.user;
+  if (!user?.id) return res.json({ connected: false, inGuild: false });
+  const inGuild = await checkGuildMembership(user.id, { fresh: req.query.fresh === '1' });
+  res.json({ connected: true, inGuild }); // inGuild null = inconnu (le serveur revérifiera à la validation)
+});
+
 app.get('/api/user', async (req, res) => {
   if (!req.session.user) return res.json({ connected: false });
   try {
@@ -1807,6 +1839,14 @@ app.post('/api/order', async (req, res) => {
   const sessionUser = req.session?.user;
   if (!sessionUser?.id || !sessionUser?.username) return res.status(401).json({ error: 'Vous devez être connecté avec Discord pour passer commande.' });
   if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Panier vide.' });
+  // Le client doit avoir coché : partenariat FiveM + règlement + CGV
+  if (req.body.acceptedTerms !== true) return res.status(400).json({ error: 'Tu dois accepter le rappel partenariat, le règlement et les CGV avant de valider.' });
+
+  // Le client doit être présent sur le serveur Discord, sinon il ne pourrait pas voir son ticket
+  const inGuild = await checkGuildMembership(String(sessionUser.id), { fresh: true });
+  if (inGuild === false) return res.status(403).json({ error: "Tu n'es pas sur notre serveur Discord : rejoins-le pour pouvoir valider ta commande.", notInGuild: true });
+  if (inGuild === null)  return res.status(503).json({ error: 'Impossible de vérifier ta présence sur notre Discord pour le moment. Réessaie dans quelques secondes.' });
+
   if (items.length > 20) return res.status(400).json({ error: 'Trop d\'articles dans le panier.' });
   for (const item of items) { if (!item.id || typeof item.id !== 'string') return res.status(400).json({ error: 'Article invalide (id manquant).' }); if (!item.name || typeof item.name !== 'string' || item.name.length > 200) return res.status(400).json({ error: 'Article invalide.' }); }
   const coreOption = req.body.coreOption === true;
@@ -1855,6 +1895,7 @@ app.post('/api/order', async (req, res) => {
       const totalLines    = promo
         ? [`**Sous-total :** ${formatPrice(subtotal)}`, `**🏷️ Code promo \`${promo.code}\` :** -${formatPrice(promo.discount)}`, `**Total :** **${formatPrice(serverTotal)}**`]
         : [`**Total :** **${formatPrice(serverTotal)}**`];
+      totalLines.push(`**📋 Engagements :** ✅ Partenariat FiveM compris · ✅ Règlement accepté · ✅ CGV acceptées`);
 
       // 2. Ticket déjà ouvert ? (seulement si l'option est activée)
       let channel = null, merged = false;
